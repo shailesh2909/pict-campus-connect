@@ -9,7 +9,7 @@ import {
   ActivityIndicator 
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { auth, db } from '../api/firebaseConfig';
+import { auth, db } from '../api/firebase/firebaseConfig';
 import { doc, getDoc, collection, query, where, limit, getDocs } from 'firebase/firestore';
 import { Ionicons } from '@expo/vector-icons';
 

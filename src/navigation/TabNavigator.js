@@ -1,11 +1,10 @@
 import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import HomeScreen from '../screens/HomeScreen';
-import TnpScreen from '../screens/TnpScreen';
-import NoticeScreen from '../screens/NoticeScreen';
-import EventScreen from '../screens/EventScreen';
-
+import HomeTab from '../tabs/HomeTab';
+import EventTab from '../tabs/EventTab';
+import TnpTab from '../tabs/TnpTab';
+import NoticeTab from '../tabs/NoticeTab';
 const Tab = createBottomTabNavigator();
 
 const iconMap = {
@@ -38,10 +37,10 @@ export default function TabNavigator() {
         ),
       })}
     >
-      <Tab.Screen name="Home" component={HomeScreen} />
-      <Tab.Screen name="TNP" component={TnpScreen} />
-      <Tab.Screen name="Notice" component={NoticeScreen} />
-      <Tab.Screen name="Events" component={EventScreen} />
+      <Tab.Screen name="Home" component={HomeTab} />
+      <Tab.Screen name="TNP" component={TnpTab} />
+      <Tab.Screen name="Notice" component={NoticeTab} />
+      <Tab.Screen name="Events" component={EventTab} />
     </Tab.Navigator>
   );
 }
