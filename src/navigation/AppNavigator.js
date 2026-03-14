@@ -1,9 +1,12 @@
 import React from 'react';
 import { createStackNavigator } from '@react-navigation/stack';
-import LoginScreen from '../screens/LoginScreen';
+// import LoginScreen from '../screens/LoginScreen';
 import TabNavigator from './TabNavigator';
-import TimetableScreen from '../screens/TimetableScreen';
-import ProfileScreen from '../screens/ProfileScreen';
+// import TimetableScreen from '../screens/TimetableScreen';
+// import ProfileScreen from '../screens/ProfileScreen';
+import LoginScreen from '../screens/auth/LoginScreen';
+import TimetableScreen from '../screens/main/TimetableScreen';
+import ProfileScreen from '../screens/main/ProfileScreen';
 
 const Stack = createStackNavigator();
 

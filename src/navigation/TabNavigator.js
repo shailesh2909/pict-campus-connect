@@ -3,8 +3,8 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import HomeTab from '../tabs/HomeTab';
 import EventTab from '../tabs/EventTab';
-import TnpTab from '../tabs/TnpTab';
 import NoticeTab from '../tabs/NoticeTab';
+import TnpTab from '../tabs/TnpTab';
 const Tab = createBottomTabNavigator();
 
 const iconMap = {
