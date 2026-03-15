@@ -9,9 +9,9 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { auth, db } from '../api/firebaseConfig';
+import { auth, db } from '../../api/firebase/firebaseConfig';
 import { doc, getDoc } from 'firebase/firestore';
-import { loadFromCache, saveToCache } from '../utils/cache';
+import { loadFromCache, saveToCache } from '../../utils/cache';
 
 const { width } = Dimensions.get('window');
 

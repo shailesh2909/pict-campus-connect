@@ -14,7 +14,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient'; // Added for better text readability
 import { collection, getDocs } from 'firebase/firestore';
-import { db } from '../api/firebaseConfig';
+import { db } from '../api/firebase/firebaseConfig';
 
 const filters = ['All', 'Technical', 'Non-Tech', 'Workshops'];
 const fallbackImage = 'https://images.unsplash.com/photo-1528605248644-14dd04022da1?auto=format&fit=crop&w=1400&q=80';

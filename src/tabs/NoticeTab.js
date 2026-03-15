@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, FlatList, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
-import { db } from '../api/firebaseConfig';
+import { db } from '../api/firebase/firebaseConfig';
 import { collection, onSnapshot } from 'firebase/firestore';
 import { Ionicons } from '@expo/vector-icons';
 

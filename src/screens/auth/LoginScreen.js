@@ -9,7 +9,7 @@ import {
   KeyboardAvoidingView, 
   Platform 
 } from 'react-native';
-import { auth, db } from '../api/firebaseConfig';
+import { auth, db } from '../../api/firebase/firebaseConfig';
 import { signInWithEmailAndPassword } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
 

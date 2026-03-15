@@ -11,7 +11,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import QRCode from 'react-native-qrcode-svg';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { auth, db } from '../api/firebaseConfig';
+import { auth, db } from '../../api/firebase/firebaseConfig';
 import { doc, getDoc } from 'firebase/firestore';
 
 export default function ProfileScreen({ navigation }) {
