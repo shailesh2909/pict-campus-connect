@@ -100,10 +100,9 @@ export default function VisitedCompanyScreen({ navigation, route }) {
     skillsRequired: 'Strong knowledge of Java and Data Structures, Good problem solving ability, Basic SQL knowledge, Effective communication skills',
   };
 
-  const skills = (company.skillsRequired || '')
-    .split(',')
-    .map(s => s.trim())
-    .filter(Boolean);
+  const skills = Array.isArray(company.skillsRequired)
+    ? company.skillsRequired
+    : (company.skillsRequired || '').split(',').map(s => s.trim()).filter(Boolean);
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>

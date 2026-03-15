@@ -8,22 +8,22 @@ import {
   StatusBar,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import Svg, { Path, Circle, Polyline, Polygon } from 'react-native-svg';
+import Svg, { Path, Circle, Polyline, Rect, Line } from 'react-native-svg';
 
 // ── Colors ────────────────────────────────────────────────────────────────────
 const COLORS = {
-  primary:       '#3D6EE8',
-  primaryLight:  '#EEF3FD',
-  background:    '#F5F6FA',
-  card:          '#FFFFFF',
-  border:        '#E0E7F5',
-  textPrimary:   '#111111',
-  textSecondary: '#888888',
-  textMuted:     '#BBBBBB',
-  white:         '#FFFFFF',
-  green:         '#4ADE80',
-  heroSubText:   '#B5CEFF',
-  heroBadgeBg:   'rgba(255,255,255,0.18)',
+  primary:      '#3D6EE8',
+  primaryLight: '#EEF3FD',
+  background:   '#F5F6FA',
+  card:         '#FFFFFF',
+  border:       '#E0E7F5',
+  textPrimary:  '#111111',
+  textSecondary:'#888888',
+  textMuted:    '#BBBBBB',
+  white:        '#FFFFFF',
+  green:        '#4ADE80',
+  heroSubText:  '#B5CEFF',
+  heroBadgeBg:  'rgba(255,255,255,0.18)',
 };
 
 // ── Icons ─────────────────────────────────────────────────────────────────────
@@ -33,9 +33,12 @@ const BackIcon = () => (
   </Svg>
 );
 
-const ActivityIcon = ({ color = COLORS.primary }) => (
+const CalendarIcon = ({ color = COLORS.primary }) => (
   <Svg width={15} height={15} viewBox="0 0 24 24" fill="none">
-    <Polyline points="22 12 18 12 15 21 9 3 6 12 2 12" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+    <Rect x="3" y="4" width="18" height="18" rx="2" stroke={color} strokeWidth={2} strokeLinecap="round" />
+    <Line x1="3" y1="10" x2="21" y2="10" stroke={color} strokeWidth={2} strokeLinecap="round" />
+    <Line x1="8" y1="2" x2="8" y2="6" stroke={color} strokeWidth={2} strokeLinecap="round" />
+    <Line x1="16" y1="2" x2="16" y2="6" stroke={color} strokeWidth={2} strokeLinecap="round" />
   </Svg>
 );
 
@@ -53,9 +56,10 @@ const PinIcon = ({ color = COLORS.primary }) => (
   </Svg>
 );
 
-const StarIcon = ({ color = COLORS.primary }) => (
+const FileIcon = ({ color = COLORS.primary }) => (
   <Svg width={15} height={15} viewBox="0 0 24 24" fill="none">
-    <Polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+    <Path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+    <Polyline points="14 2 14 8 20 8" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
   </Svg>
 );
 
@@ -82,30 +86,14 @@ const InfoRow = ({ icon, label, value, valueBlue = false }) => (
 );
 
 // ── Component ─────────────────────────────────────────────────────────────────
-export default function TodayCompanyScreen({ navigation, route }) {
-  const company = route?.params?.company ?? {
-    name: 'Siemens Healthineers',
-    service: 'Software Engineer Intern',
-    package: '14.5L',
-    eligibility: '60% aggregate throughout, No active backlogs, COMP / IT / ENTC branches only',
-    reportingTime: '09:30 AM',
-    venue: 'A-Block Seminar Hall',
-    skillsRequired: 'Strong knowledge of Java and Data Structures, Good problem solving ability, Basic SQL knowledge, Effective communication skills, Familiarity with OOP concepts',
+export default function OngoingEventScreen({ navigation, route }) {
+  const event = route?.params?.event ?? {
+    name: 'Annual Tech Fest 2026',
+    date: 'Monday, 24 October 2026',
+    time: '10:00 AM – 12:00 PM',
+    venue: 'Auditorium, Main Building\nPICT Campus, Pune',
+    description: 'Event description goes here. This section describes the purpose, highlights, and any other relevant information about the event for students.',
   };
-
-  // Split skills by comma into bullet points
-  const skills = Array.isArray(company.skillsRequired)
-    ? company.skillsRequired
-    : (company.skillsRequired || '').split(',').map(s => s.trim()).filter(Boolean);
-
-  // Generate 2-line logo abbreviation from company name
-  const getLogoLines = (name = '') => {
-    const words = name.trim().split(/\s+/);
-    const first = (words[0] || '').toUpperCase();
-    if (first.length <= 4) return [first, (words[1] || '').substring(0, 4).toUpperCase()].filter(Boolean);
-    return [first.substring(0, 3), first.substring(3, 7)];
-  };
-  const logoLines = getLogoLines(company.name);
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
@@ -126,70 +114,45 @@ export default function TodayCompanyScreen({ navigation, route }) {
       >
         {/* ── Hero ── */}
         <View style={styles.hero}>
-          <View style={styles.heroTop}>
-            <View style={styles.heroInfo}>
-              <Text style={styles.heroName}>{company.name}</Text>
-              <Text style={styles.heroSub}>{company.service}</Text>
-            </View>
-            <View style={styles.logoBox}>
-              {logoLines.map((line, i) => (
-                <Text key={i} style={styles.logoText}>{line}</Text>
-              ))}
-            </View>
-          </View>
+          <Text style={styles.heroName}>{event.name}</Text>
           <View style={styles.heroBadge}>
-            <View style={styles.greenDot} />
-            <Text style={styles.heroBadgeText}>Visiting Today</Text>
+            <View style={styles.liveDot} />
+            <Text style={styles.heroBadgeText}>Ongoing Now</Text>
           </View>
         </View>
 
-        {/* ── Stats strip ── */}
-        <View style={styles.statsRow}>
-          <View style={styles.statCell}>
-            <Text style={styles.statVal}>₹{company.package}</Text>
-            <Text style={styles.statLbl}>Package CTC</Text>
-          </View>
-          <View style={[styles.statCell, styles.statBorderLeft]}>
-            <Text style={styles.statVal}>{company.reportingTime}</Text>
-            <Text style={styles.statLbl}>Reporting Time</Text>
-          </View>
-        </View>
-
-        {/* ── Eligibility Criteria ── */}
-        <SectionCard icon={<ActivityIcon />} title="ELIGIBILITY CRITERIA">
+        {/* ── Date and Time ── */}
+        <SectionCard icon={<ClockIcon />} title="DATE AND TIME">
           <InfoRow
-            icon={<ActivityIcon />}
-            label="Criteria"
-            value={company.eligibility}
+            icon={<CalendarIcon />}
+            label="Date"
+            value={event.date}
           />
-        </SectionCard>
-
-        {/* ── Schedule ── */}
-        <SectionCard icon={<ClockIcon />} title="SCHEDULE">
           <InfoRow
             icon={<ClockIcon />}
-            label="Reporting Time"
-            value={`${company.reportingTime} sharp`}
+            label="Time"
+            value={event.time}
             valueBlue
           />
+        </SectionCard>
+
+        {/* ── Venue ── */}
+        <SectionCard icon={<PinIcon />} title="VENUE">
           <InfoRow
             icon={<PinIcon />}
-            label="Venue"
-            value={company.venue}
+            label="Location"
+            value={event.venue}
           />
         </SectionCard>
 
-        {/* ── Skills Required ── */}
-        <SectionCard icon={<StarIcon />} title="SKILLS REQUIRED">
-          {skills.map((skill, index) => (
-            <View key={index} style={styles.bulletRow}>
-              <View style={styles.bulletDot} />
-              <Text style={styles.bulletText}>{skill}</Text>
-            </View>
-          ))}
+        {/* ── About Event ── */}
+        <SectionCard icon={<FileIcon />} title="ABOUT EVENT">
+          <View style={styles.descBox}>
+            <Text style={styles.descText}>{event.description}</Text>
+          </View>
         </SectionCard>
 
-        <View style={{ height: 30, marginHorizontal: 16 }} />
+        <View style={{ height: 24 }} />
       </ScrollView>
     </SafeAreaView>
   );
@@ -228,37 +191,12 @@ const styles = StyleSheet.create({
     paddingBottom: 28,
     paddingTop: 4,
   },
-  heroTop: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-  },
-  heroInfo: { flex: 1, marginRight: 12 },
   heroName: {
     fontSize: 22,
     fontWeight: '800',
     color: COLORS.white,
     lineHeight: 28,
-  },
-  heroSub: {
-    fontSize: 14,
-    color: COLORS.heroSubText,
-    marginTop: 4,
-  },
-  logoBox: {
-    width: 62,
-    height: 62,
-    borderRadius: 14,
-    backgroundColor: COLORS.white,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0,
-  },
-  logoText: {
-    fontSize: 13,
-    fontWeight: '800',
-    color: COLORS.primary,
-    textAlign: 'center',
+    paddingRight: 10,
   },
   heroBadge: {
     flexDirection: 'row',
@@ -268,9 +206,9 @@ const styles = StyleSheet.create({
     paddingVertical: 5,
     paddingHorizontal: 12,
     alignSelf: 'flex-start',
-    marginTop: 14,
+    marginTop: 12,
   },
-  greenDot: {
+  liveDot: {
     width: 7,
     height: 7,
     borderRadius: 4,
@@ -281,41 +219,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: COLORS.white,
     fontWeight: '600',
-  },
-
-  // Stats strip — only 2 cells
-  statsRow: {
-    flexDirection: 'row',
-    backgroundColor: COLORS.primaryLight,
-    marginHorizontal: 16,
-    borderRadius: 14,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    marginTop: -14,
-    paddingVertical: 0,
-    marginBottom: 16,
-  },
-  statCell: {
-    flex: 1,
-    paddingVertical: 14,
-    alignItems: 'center',
-  },
-  statBorderLeft: {
-    borderLeftWidth: 1,
-    borderLeftColor: COLORS.border,
-  },
-  statVal: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: COLORS.primary,
-    paddingVertical: 2,
-  },
-  statLbl: {
-    fontSize: 10,
-    color: COLORS.textSecondary,
-    marginTop: 3,
-    fontWeight: '500',
   },
 
   // Scroll
@@ -336,7 +239,6 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     marginBottom: 12,
     marginHorizontal: 16,
-    paddingVertical: 0
   },
   sectionHeader: {
     backgroundColor: COLORS.primaryLight,
@@ -389,26 +291,18 @@ const styles = StyleSheet.create({
     color: COLORS.primary,
   },
 
-  // Bullet points for skills
-  bulletRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    marginBottom: 10,
-    paddingHorizontal: 4,
+  // Description box
+  descBox: {
+    backgroundColor: COLORS.background,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    padding: 14,
+    minHeight: 110,
   },
-  bulletDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: COLORS.primary,
-    marginTop: 7,
-    marginRight: 10,
-    flexShrink: 0,
-  },
-  bulletText: {
-    flex: 1,
-    fontSize: 15,
-    color: '#333333',
-    lineHeight: 22,
+  descText: {
+    fontSize: 14,
+    color: '#444444',
+    lineHeight: 21,
   },
 });

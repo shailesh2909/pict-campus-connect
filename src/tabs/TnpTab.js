@@ -97,7 +97,7 @@ export default function TnpTab({ navigation }) {
       <View style={styles.topbar}>
         <View>
           <Text style={styles.topbarTitle}>T&P Hub</Text>
-          <Text style={styles.topbarSub}>PICT Campus Connect</Text>
+          {/* <Text style={styles.topbarSub}>PICT Campus Connect</Text> */}
         </View>
         <TouchableOpacity style={styles.bellBtn}>
           <BellIcon size={16} color={COLORS.primary} />

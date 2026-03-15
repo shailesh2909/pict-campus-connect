@@ -1,174 +1,353 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React from 'react';
 import {
-    ActivityIndicator,
-    FlatList,
-    ImageBackground,
-    Linking,
-    Pressable,
-    RefreshControl,
-    Text,
-    View,
+  View,
+  Text,
+  ScrollView,
+  TouchableOpacity,
+  StyleSheet,
+  StatusBar,
 } from 'react-native';
-
-import Ionicons from '@expo/vector-icons/Ionicons';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { LinearGradient } from 'expo-linear-gradient'; // Added for better text readability
-import { collection, getDocs } from 'firebase/firestore';
-import { db } from '../api/firebase/firebaseConfig';
+import Svg, { Path } from 'react-native-svg';
 
-const filters = ['All', 'Technical', 'Non-Tech', 'Workshops'];
-const fallbackImage = 'https://images.unsplash.com/photo-1528605248644-14dd04022da1?auto=format&fit=crop&w=1400&q=80';
+// ── Colors ────────────────────────────────────────────────────────────────────
+const COLORS = {
+  primary:       '#3D6EE8',
+  primaryLight:  '#EEF3FD',
+  background:    '#F5F6FA',
+  card:          '#FFFFFF',
+  border:        '#E0E7F5',
+  textPrimary:   '#111111',
+  textSecondary: '#888888',
+  textMuted:     '#BBBBBB',
+  white:         '#FFFFFF',
+  green:         '#065F46',
+  greenLight:    '#ECFDF5',
+};
 
-export default function EventScreen() {
-    const [events, setEvents] = useState([]);
-    const [activeFilter, setActiveFilter] = useState('All');
-    const [loading, setLoading] = useState(true);
-    const [refreshing, setRefreshing] = useState(false);
-    const [interestedMap, setInterestedMap] = useState({});
+// ── Mock data (replace with Firebase calls) ───────────────────────────────────
+const ongoingEvents = [
+  {
+    id: '1',
+    name: 'Event Name',
+    date: 'Monday 24, October 2026',
+    time: '10:00 AM – 12:00 PM',
+  },
+  {
+    id: '2',
+    name: 'Event Name',
+    date: 'Monday 24, October 2026',
+    time: '10:00 AM – 12:00 PM',
+  },
+];
 
-    const fetchEvents = async (isRefresh = false) => {
-        if (isRefresh) setRefreshing(true);
-        else setLoading(true);
-        try {
-            const snapshot = await getDocs(collection(db, 'events'));
-            const parsed = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            setEvents(parsed);
-        } catch (e) {
-            console.error(e);
-        } finally {
-            setLoading(false);
-            setRefreshing(false);
-        }
-    };
+const upcomingEvents = [
+  {
+    id: '1',
+    name: 'Event Name',
+    date: 'Monday 24, October 2026',
+    time: '10:00 AM – 12:00 PM',
+  },
+  {
+    id: '2',
+    name: 'Event Name',
+    date: 'Monday 24, October 2026',
+    time: '10:00 AM – 12:00 PM',
+  },
+  {
+    id: '3',
+    name: 'Event Name',
+    date: 'Monday 24, October 2026',
+    time: '10:00 AM – 12:00 PM',
+  },
+];
 
-    useEffect(() => { fetchEvents(); }, []);
+// ── Bell Icon ─────────────────────────────────────────────────────────────────
+const BellIcon = ({ size = 16, color = '#3D6EE8' }) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+    <Path
+      d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"
+      stroke={color}
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    <Path
+      d="M13.73 21a2 2 0 01-3.46 0"
+      stroke={color}
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </Svg>
+);
 
-    const filteredEvents = useMemo(() => {
-        if (activeFilter === 'All') return events;
-        return events.filter(e => e.category === activeFilter);
-    }, [events, activeFilter]);
+// ── Ongoing Event Card ────────────────────────────────────────────────────────
+const OngoingCard = ({ item, onViewDetails }) => (
+  <View style={styles.ongoingCard}>
+    <View style={styles.liveBadge}>
+      <Text style={styles.liveBadgeText}>LIVE</Text>
+    </View>
+    <Text style={styles.eventName}>{item.name}</Text>
+    <Text style={styles.metaLabel}>Date and Time:</Text>
+    <Text style={styles.eventDate}>{item.date}</Text>
+    <Text style={styles.eventTime}>{item.time}</Text>
+    <TouchableOpacity onPress={() => onViewDetails && onViewDetails(item)}>
+      <Text style={styles.viewLink}>View Details →</Text>
+    </TouchableOpacity>
+  </View>
+);
 
-    const renderEventCard = (item, hero = false) => {
-        const interested = Boolean(interestedMap[item.id]);
+// ── Upcoming Event Card ───────────────────────────────────────────────────────
+const UpcomingCard = ({ item, onViewDetails, onRegister }) => (
+  <View style={styles.upcomingCard}>
+    <View style={styles.upcomingLeft}>
+      <Text style={styles.eventName}>{item.name}</Text>
+      <Text style={styles.metaLabel}>Date and Time:</Text>
+      <Text style={styles.eventDate}>{item.date}</Text>
+      <Text style={styles.eventTime}>{item.time}</Text>
+      <TouchableOpacity onPress={() => onViewDetails && onViewDetails(item)}>
+        <Text style={styles.viewLink}>View Details →</Text>
+      </TouchableOpacity>
+    </View>
+    <TouchableOpacity
+      style={styles.registerBtn}
+      onPress={() => onRegister && onRegister(item)}
+      activeOpacity={0.85}
+    >
+      <Text style={styles.registerBtnText}>Register{'\n'}Now</Text>
+    </TouchableOpacity>
+  </View>
+);
 
-        return (
-            <Pressable className={`mb-6 overflow-hidden rounded-[35px] shadow-xl shadow-slate-300 bg-white`}>
-                <ImageBackground
-                    source={{ uri: item.image || fallbackImage }}
-                    style={{ height: hero ? 320 : 240 }}
-                    imageStyle={{ borderRadius: 35 }}
-                >
-                    {/* Dark overlay for readability */}
-                    <LinearGradient
-                        colors={['transparent', 'rgba(0,0,0,0.8)']}
-                        className="absolute inset-0 rounded-[35px]"
-                    />
+// ── Component ─────────────────────────────────────────────────────────────────
+export default function EventTab({ navigation }) {
+  const handleViewDetails = (item) => {
+    navigation.navigate('OngoingEventScreen', { event: item });
+  };
 
-                    <View className="flex-1 justify-between p-5">
-                        {/* Top Row: Category & Interested */}
-                        <View className="flex-row justify-between items-start">
-                            <View className="bg-blue-600/90 px-4 py-1.5 rounded-full border border-blue-400/30">
-                                <Text className="text-[10px] font-black uppercase tracking-widest text-white">
-                                    {item.category || 'General'}
-                                </Text>
-                            </View>
-                            <Pressable 
-                                onPress={() => setInterestedMap(p => ({ ...p, [item.id]: !p[item.id] }))}
-                                className="bg-white/20 p-2.5 rounded-full border border-white/30"
-                            >
-                                <Ionicons name={interested ? "heart" : "heart-outline"} size={20} color={interested ? "#fb7185" : "white"} />
-                            </Pressable>
-                        </View>
+  const handleViewUpcomingDetails = (item) => {
+    navigation.navigate('UpcomingEventScreen', { event: item });
+  };
 
-                        {/* Bottom Row: Info */}
-                        <View>
-                            <View className="flex-row items-center mb-1">
-                                <Ionicons name="calendar" size={12} color="#94a3b8" />
-                                <Text className="ml-1 text-xs font-bold text-slate-300 uppercase tracking-tighter">
-                                    {item.date} • {item.organizer}
-                                </Text>
-                            </View>
-                            <Text className="text-2xl font-black text-white tracking-tight leading-7">
-                                {item.title}
-                            </Text>
-                            
-                            <View className="flex-row items-center justify-between mt-4">
-                                <Text className="flex-1 text-xs text-slate-300 mr-4" numberOfLines={2}>
-                                    {item.description}
-                                </Text>
-                                <Pressable 
-                                    onPress={() => Linking.openURL(item.regLink || '#')}
-                                    className="bg-white px-5 py-2.5 rounded-2xl shadow-sm"
-                                >
-                                    <Text className="text-xs font-black text-blue-900">Get Tickets</Text>
-                                </Pressable>
-                            </View>
-                        </View>
-                    </View>
-                </ImageBackground>
-            </Pressable>
-        );
-    };
+  const handleRegister = (item) => {
+    // handle registration logic
+  };
 
-    if (loading) return (
-        <View className="flex-1 items-center justify-center bg-slate-50">
-            <ActivityIndicator size="large" color="#1e3a8a" />
+  return (
+    <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
+      <StatusBar barStyle="dark-content" backgroundColor={COLORS.white} translucent={false} />
+
+      {/* ── Header ── */}
+      <View style={styles.topbar}>
+        <View>
+          <Text style={styles.topbarTitle}>Events</Text>
+          {/* <Text style={styles.topbarSub}>PICT Campus Connect</Text> */}
         </View>
-    );
+        <TouchableOpacity style={styles.bellBtn}>
+          <BellIcon size={16} color={COLORS.primary} />
+        </TouchableOpacity>
+      </View>
 
-    return (
-        <SafeAreaView className="flex-1 bg-slate-50">
-            {/* Minimalist Header */}
-            <View className="px-6 py-4 flex-row justify-between items-end">
-                <View>
-                    <Text className="text-xs font-black text-blue-600 uppercase tracking-[3px]">Discover</Text>
-                    <Text className="text-3xl font-black text-slate-900 mt-1">Events</Text>
-                </View>
-                <Pressable className="bg-slate-200/50 p-2.5 rounded-full">
-                    <Ionicons name="search" size={20} color="#1e293b" />
-                </Pressable>
-            </View>
-
-            {/* Premium Filter Chips */}
-            <View className="py-2">
-                <FlatList
-                    horizontal
-                    data={filters}
-                    showsHorizontalScrollIndicator={false}
-                    contentContainerStyle={{ paddingHorizontal: 20 }}
-                    renderItem={({ item }) => (
-                        <Pressable
-                            onPress={() => setActiveFilter(item)}
-                            className={`mr-3 px-6 py-3 rounded-2xl ${activeFilter === item ? 'bg-slate-900 shadow-lg shadow-slate-400' : 'bg-white border border-slate-100'}`}
-                        >
-                            <Text className={`text-xs font-bold ${activeFilter === item ? 'text-white' : 'text-slate-500'}`}>
-                                {item}
-                            </Text>
-                        </Pressable>
-                    )}
-                />
-            </View>
-
-            <FlatList
-                data={filteredEvents}
-                keyExtractor={(item) => item.id}
-                refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => fetchEvents(true)} />}
-                contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 20, paddingBottom: 100 }}
-                ListHeaderComponent={() => (
-                    filteredEvents.length > 0 ? (
-                        <Text className="mb-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                            Upcoming Highlights
-                        </Text>
-                    ) : null
-                )}
-                renderItem={({ item, index }) => renderEventCard(item, index === 0)}
-                ListEmptyComponent={() => (
-                    <View className="mt-20 items-center">
-                        <Ionicons name="sparkles-outline" size={40} color="#cbd5e1" />
-                        <Text className="mt-4 text-slate-400 font-bold">No events matching this category</Text>
-                    </View>
-                )}
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* ── Ongoing Events ── */}
+        <Text style={styles.sectionTitle}>Ongoing Events</Text>
+        {ongoingEvents.length > 0 ? (
+          ongoingEvents.map(item => (
+            <OngoingCard
+              key={item.id}
+              item={item}
+              onViewDetails={handleViewDetails}
             />
-        </SafeAreaView>
-    );
+          ))
+        ) : (
+          <Text style={styles.emptyText}>No ongoing events.</Text>
+        )}
+
+        {/* ── Upcoming Events ── */}
+        <Text style={[styles.sectionTitle, styles.sectionTitleUpcoming]}>
+          Upcoming Events
+        </Text>
+        {upcomingEvents.length > 0 ? (
+          upcomingEvents.map(item => (
+            <UpcomingCard
+              key={item.id}
+              item={item}
+              onViewDetails={handleViewUpcomingDetails}
+              onRegister={handleRegister}
+            />
+          ))
+        ) : (
+          <Text style={styles.emptyText}>No upcoming events.</Text>
+        )}
+
+        <View style={{ height: 20 }} />
+      </ScrollView>
+    </SafeAreaView>
+  );
 }
+
+// ── Styles ────────────────────────────────────────────────────────────────────
+const styles = StyleSheet.create({
+  safe: {
+    flex: 1,
+    backgroundColor: COLORS.white,
+  },
+
+  // Header
+  topbar: {
+    backgroundColor: COLORS.white,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+  },
+  topbarTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: COLORS.textPrimary,
+    lineHeight: 22,
+  },
+  topbarSub: {
+    fontSize: 12,
+    color: COLORS.textSecondary,
+    marginTop: 1,
+  },
+  bellBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: COLORS.primaryLight,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  // Scroll
+  scroll: {
+    flex: 1,
+    backgroundColor: COLORS.background,
+  },
+  scrollContent: {
+    padding: 14,
+  },
+
+  // Section titles
+  sectionTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: COLORS.textPrimary,
+    marginBottom: 10,
+    marginTop: 4,
+  },
+  sectionTitleUpcoming: {
+    marginTop: 20,
+  },
+
+  // Ongoing card
+  ongoingCard: {
+    backgroundColor: COLORS.card,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    padding: 14,
+    marginBottom: 10,
+  },
+  liveBadge: {
+    position: 'absolute',
+    top: 14,
+    right: 14,
+    backgroundColor: COLORS.greenLight,
+    borderRadius: 6,
+    paddingVertical: 3,
+    paddingHorizontal: 8,
+  },
+  liveBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: COLORS.green,
+  },
+
+  // Upcoming card
+  upcomingCard: {
+    backgroundColor: COLORS.card,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    padding: 14,
+    marginBottom: 10,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+  },
+  upcomingLeft: {
+    flex: 1,
+    marginRight: 10,
+  },
+
+  // Shared event content
+  eventName: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: COLORS.textPrimary,
+    marginBottom: 8,
+    paddingRight: 70,
+  },
+  metaLabel: {
+    fontSize: 11,
+    color: COLORS.textSecondary,
+    fontWeight: '500',
+    marginBottom: 2,
+  },
+  eventDate: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#333333',
+    lineHeight: 18,
+  },
+  eventTime: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: COLORS.primary,
+    marginTop: 2,
+  },
+  viewLink: {
+    fontSize: 12,
+    color: COLORS.primary,
+    fontWeight: '600',
+    marginTop: 10,
+  },
+
+  // Register Now button
+  registerBtn: {
+    backgroundColor: COLORS.primary,
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minWidth: 72,
+    flexShrink: 0,
+  },
+  registerBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: COLORS.white,
+    textAlign: 'center',
+    lineHeight: 17,
+  },
+
+  // Empty state
+  emptyText: {
+    fontSize: 14,
+    color: COLORS.textMuted,
+    fontStyle: 'italic',
+    marginBottom: 10,
+  },
+});
