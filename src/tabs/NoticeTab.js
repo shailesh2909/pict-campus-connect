@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -6,20 +6,22 @@ import {
   TouchableOpacity,
   StyleSheet,
   StatusBar,
+  Image,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Path } from 'react-native-svg';
+import Skeleton from '../components/Skeleton';
 
 // ── Colors ────────────────────────────────────────────────────────────────────
 const COLORS = {
-  primary:       '#3D6EE8',
-  primaryLight:  '#EEF3FD',
-  background:    '#F5F6FA',
+  primary:       '#007AFF',
+  primaryLight:  '#E5F1FF',
+  background:    '#F2F2F7',
   card:          '#FFFFFF',
-  border:        '#E0E7F5',
-  textPrimary:   '#111111',
-  textSecondary: '#888888',
-  textMuted:     '#BBBBBB',
+  border:        '#E5E5EA',
+  textPrimary:   '#000000',
+  textSecondary: '#3C3C43',
+  textMuted:     '#8E8E93',
   white:         '#FFFFFF',
 };
 
@@ -106,7 +108,14 @@ const NoticeCard = ({ item }) => {
 // ── Component ─────────────────────────────────────────────────────────────────
 export default function NoticeTab() {
   const [activeFilter, setActiveFilter] = useState('All');
+  const [loading, setLoading] = useState(true);
   const insets = useSafeAreaInsets();
+
+  useEffect(() => {
+    // Simulate data loading
+    const timer = setTimeout(() => setLoading(false), 1500);
+    return () => clearTimeout(timer);
+  }, []);
 
   const filtered = activeFilter === 'All'
     ? notices
@@ -122,9 +131,10 @@ export default function NoticeTab() {
           <Text style={styles.topbarTitle}>Notices</Text>
           {/* <Text style={styles.topbarSub}>PICT Campus Connect</Text> */}
         </View>
-        <TouchableOpacity style={styles.bellBtn}>
-          <BellIcon size={16} color={COLORS.primary} />
-        </TouchableOpacity>
+        <Image
+          source={require('../../assets/pict logo.png')}
+          style={{ width: 40, height: 40, resizeMode: 'contain' }}
+        />
       </View>
 
       {/* ── Filter pills ── */}
@@ -155,7 +165,20 @@ export default function NoticeTab() {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {filtered.length > 0 ? (
+        {loading ? (
+          // Skeleton Loaders
+          [1, 2, 3, 4].map(key => (
+            <View key={key} style={styles.card}>
+              <View style={styles.cardTop}>
+                <Skeleton width={80} height={24} borderRadius={12} />
+                <Skeleton width={60} height={16} />
+              </View>
+              <Skeleton width="100%" height={20} style={{ marginBottom: 6, marginTop: 10 }} />
+              <Skeleton width="80%" height={16} style={{ marginBottom: 4 }} />
+              <Skeleton width="60%" height={16} />
+            </View>
+          ))
+        ) : filtered.length > 0 ? (
           filtered.map(item => <NoticeCard key={item.id} item={item} />)
         ) : (
           <View style={styles.emptyWrap}>
@@ -220,12 +243,15 @@ const styles = StyleSheet.create({
     paddingRight: 8,
   },
   pill: {
-    borderWidth: 1.5,
-    borderColor: COLORS.border,
     borderRadius: 20,
-    paddingVertical: 6,
+    paddingVertical: 7,
     paddingHorizontal: 16,
     backgroundColor: COLORS.white,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
   },
   pillActive: {
     backgroundColor: COLORS.primary,
@@ -253,11 +279,14 @@ const styles = StyleSheet.create({
   // Notice card
   card: {
     backgroundColor: COLORS.card,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    padding: 14,
-    marginBottom: 10,
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1.5 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2, // For Android
   },
   cardTop: {
     flexDirection: 'row',

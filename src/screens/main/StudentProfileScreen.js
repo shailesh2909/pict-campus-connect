@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import {
   View,
   Text,
@@ -10,9 +10,9 @@ import {
   Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { auth, db } from '../../api/firebase/firebaseConfig';
-import { doc, getDoc } from 'firebase/firestore';
-import { signOut, sendPasswordResetEmail } from 'firebase/auth';
+import { useAuth } from '../../context/AuthContext';
+import { sendPasswordResetEmail } from 'firebase/auth';
+import { auth } from '../../api/firebase/firebaseConfig';
 import Svg, { Path, Circle, Polyline, Rect, Line } from 'react-native-svg';
 
 // ── Colors ────────────────────────────────────────────────────────────────────
@@ -108,24 +108,7 @@ const InfoRow = ({ icon, value, isLast = false }) => (
 
 // ── Component ─────────────────────────────────────────────────────────────────
 export default function StudentProfileScreen({ navigation }) {
-  const [userData, setUserData] = useState(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    const fetchProfile = async () => {
-      try {
-        const uid = auth.currentUser?.uid;
-        if (!uid) { setLoading(false); return; }
-        const snap = await getDoc(doc(db, 'users', uid));
-        if (snap.exists()) setUserData(snap.data());
-      } catch (e) {
-        console.error('Profile fetch error:', e);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchProfile();
-  }, []);
+  const { profile, loading, logout } = useAuth();
 
   const handleChangePassword = async () => {
     const email = auth.currentUser?.email;
@@ -161,7 +144,7 @@ export default function StudentProfileScreen({ navigation }) {
           style: 'destructive',
           onPress: async () => {
             try {
-              await signOut(auth);
+              await logout();
             } catch (e) {
               Alert.alert('Error', e.message);
             }
@@ -179,8 +162,8 @@ export default function StudentProfileScreen({ navigation }) {
     );
   }
 
-  const initials = userData?.name
-    ? userData.name.split(' ').map(w => w[0]).join('').substring(0, 2).toUpperCase()
+  const initials = profile?.name
+    ? profile.name.split(' ').map(w => w[0]).join('').substring(0, 2).toUpperCase()
     : 'ST';
 
   return (
@@ -207,7 +190,7 @@ export default function StudentProfileScreen({ navigation }) {
           <View style={styles.avatarRing}>
             <Text style={styles.avatarText}>{initials}</Text>
           </View>
-          <Text style={styles.avatarName}>{userData?.name || 'Student'}</Text>
+          <Text style={styles.avatarName}>{profile?.name || 'Student'}</Text>
         </View>
 
         {/* ── Divider ── */}
@@ -215,13 +198,13 @@ export default function StudentProfileScreen({ navigation }) {
 
         {/* ── Info List ── */}
         <View style={styles.infoList}>
-          <InfoRow icon={<IdIcon />}      value={userData?.pictId} />
+          <InfoRow icon={<IdIcon />}      value={profile?.email?.split('@')[0] || profile?.pictId} />
           <InfoRow icon={<UserIcon />}    value="Student" />
-          <InfoRow icon={<ClassIcon />}   value={userData?.class || userData?.className} />
-          <InfoRow icon={<BookIcon />}    value={userData?.semester ? `Semester ${userData.semester}` : userData?.year} />
+          <InfoRow icon={<ClassIcon />}   value={profile?.batch ? `Batch ${profile.batch}` : profile?.class || profile?.className} />
+          <InfoRow icon={<BookIcon />}    value={profile?.semester ? `Semester ${profile.semester}` : profile?.year} />
           <InfoRow icon={<CollegeIcon />} value="Pune Institute of Computer Technology" />
-          <InfoRow icon={<MailIcon />}    value={userData?.personalEmail || userData?.email} />
-          <InfoRow icon={<PhoneIcon />}   value={userData?.contact || userData?.phone} isLast />
+          <InfoRow icon={<MailIcon />}    value={profile?.email || profile?.personalEmail} />
+          <InfoRow icon={<PhoneIcon />}   value={profile?.contact || profile?.phone} isLast />
         </View>
 
         {/* ── Divider ── */}

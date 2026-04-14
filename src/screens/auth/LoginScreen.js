@@ -1,62 +1,81 @@
 import React, { useState } from 'react';
-import { 
-  View, 
-  Text, 
-  TextInput, 
-  TouchableOpacity, 
-  StyleSheet, 
-  Alert, 
-  KeyboardAvoidingView, 
-  Platform 
+import {
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  StyleSheet,
+  Alert,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
-import { auth, db } from '../../api/firebase/firebaseConfig';
-import { signInWithEmailAndPassword } from 'firebase/auth';
-import { doc, getDoc } from 'firebase/firestore';
+import { auth } from '../../api/firebase/firebaseConfig';
+import { signInWithEmailAndPassword, sendPasswordResetEmail } from 'firebase/auth';
 
-export default function LoginScreen({ navigation }) {
+/**
+ * LoginScreen
+ * ───────────
+ * Handles email + password login for both Students and Faculty.
+ * After successful sign-in, AuthContext's onAuthStateChanged listener
+ * automatically picks up the user and resolves the profile from the
+ * nested Firestore hierarchy using a Collection Group Query.
+ */
+export default function LoginScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
 
   const handleLogin = async () => {
     if (!email || !password) {
-      Alert.alert("Error", "Please fill in all fields");
+      Alert.alert('Error', 'Please fill in all fields');
       return;
     }
 
     setLoading(true);
     try {
-      const userCredential = await signInWithEmailAndPassword(auth, email, password);
-      const user = userCredential.user;
-
-      // Fetch user role and first-time status from Firestore
-      const userDoc = await getDoc(doc(db, "users", user.uid));
-      
-      if (userDoc.exists()) {
-        const userData = userDoc.data();
-        
-        // If it's a first-time login, redirect to Change Password
-        if (userData.isFirstLogin) {
-          navigation.navigate('PasswordChange');
-        } 
-        // Otherwise, App.js logic will automatically switch to HomeScreen
-      } else {
-        Alert.alert("Error", "User data not found in database.");
-      }
+      await signInWithEmailAndPassword(auth, email.trim(), password);
+      // AuthContext handles profile resolution automatically
     } catch (error) {
-      let errorMessage = "An error occurred. Please try again.";
-      if (error.code === 'auth/user-not-found') errorMessage = "No user found with this email.";
-      if (error.code === 'auth/wrong-password') errorMessage = "Incorrect password.";
-      
-      Alert.alert("Login Failed", errorMessage);
+      let errorMessage = 'An error occurred. Please try again.';
+      if (error.code === 'auth/user-not-found') errorMessage = 'No user found with this email.';
+      if (error.code === 'auth/wrong-password') errorMessage = 'Incorrect password.';
+      if (error.code === 'auth/invalid-credential') errorMessage = 'Invalid email or password.';
+
+      Alert.alert('Login Failed', errorMessage);
     } finally {
       setLoading(false);
     }
   };
 
+  const handleForgotPassword = async () => {
+    if (!email) {
+      Alert.alert('E-mail required', 'Please enter your email above first to receive the reset link.');
+      return;
+    }
+
+    try {
+      console.log('[LoginScreen] Attempting to send reset email to:', email.trim());
+      await sendPasswordResetEmail(auth, email.trim());
+      console.log('[LoginScreen] Reset email sent successfully!');
+      Alert.alert(
+        'Success',
+        'A password reset link has been sent to your email. Please check your inbox (and spam folder).'
+      );
+    } catch (error) {
+      console.error('[LoginScreen] Forgot Password Error:', error);
+      let errorMessage = 'Could not send reset email. Please try again.';
+      if (error.code === 'auth/user-not-found') {
+        errorMessage = 'No user found with this email address.';
+      } else if (error.code === 'auth/invalid-email') {
+        errorMessage = 'Please enter a valid email address.';
+      }
+      Alert.alert('Error', errorMessage);
+    }
+  };
+
   return (
-    <KeyboardAvoidingView 
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
+    <KeyboardAvoidingView
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       style={styles.container}
     >
       <View style={styles.inner}>
@@ -80,17 +99,19 @@ export default function LoginScreen({ navigation }) {
           secureTextEntry
         />
 
-        <TouchableOpacity 
-          style={[styles.button, loading && { opacity: 0.7 }]} 
+        <TouchableOpacity
+          style={[styles.button, loading && { opacity: 0.7 }]}
           onPress={handleLogin}
           disabled={loading}
         >
-          <Text style={styles.buttonText}>{loading ? "Logging in..." : "Login"}</Text>
+          <Text style={styles.buttonText}>{loading ? 'Logging in...' : 'Login'}</Text>
         </TouchableOpacity>
 
-        <Text style={styles.footerText}>
-          Contact Admin if you cannot log in.
-        </Text>
+        <TouchableOpacity onPress={handleForgotPassword} style={styles.forgotBtn}>
+          <Text style={styles.forgotText}>Forgot Password?</Text>
+        </TouchableOpacity>
+
+        <Text style={styles.footerText}>Contact Admin if you cannot log in.</Text>
       </View>
     </KeyboardAvoidingView>
   );
@@ -119,5 +140,7 @@ const styles = StyleSheet.create({
     marginTop: 10,
   },
   buttonText: { color: '#fff', fontSize: 18, fontWeight: 'bold' },
+  forgotBtn: { marginTop: 15, alignSelf: 'center' },
+  forgotText: { color: '#1a73e8', fontSize: 14, fontWeight: '600' },
   footerText: { textAlign: 'center', color: '#999', marginTop: 25, fontSize: 12 },
 });

@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "980627271106",
+    "project_id": "campus-connect-80dad",
+    "storage_bucket": "campus-connect-80dad.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:980627271106:android:8fcffe49c9a275e4973a5b",
+        "android_client_info": {
+          "package_name": "pict.edu"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDqdDP1kYkj4HSXShVd7eHD1l5dhdoaxXM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

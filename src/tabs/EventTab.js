@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -6,23 +6,25 @@ import {
   TouchableOpacity,
   StyleSheet,
   StatusBar,
+  Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Path } from 'react-native-svg';
+import Skeleton from '../components/Skeleton';
 
 // ── Colors ────────────────────────────────────────────────────────────────────
 const COLORS = {
-  primary:       '#3D6EE8',
-  primaryLight:  '#EEF3FD',
-  background:    '#F5F6FA',
+  primary:       '#007AFF', // iOS blue
+  primaryLight:  '#E5F1FF',
+  background:    '#F2F2F7', // iOS Grouped Background
   card:          '#FFFFFF',
-  border:        '#E0E7F5',
-  textPrimary:   '#111111',
-  textSecondary: '#888888',
-  textMuted:     '#BBBBBB',
+  border:        '#E5E5EA', // iOS separator
+  textPrimary:   '#000000',
+  textSecondary: '#3C3C43',
+  textMuted:     '#8E8E93',
   white:         '#FFFFFF',
-  green:         '#065F46',
-  greenLight:    '#ECFDF5',
+  green:         '#34C759', // iOS green
+  greenLight:    '#E8F8EE',
 };
 
 // ── Mock data (replace with Firebase calls) ───────────────────────────────────
@@ -122,6 +124,14 @@ const UpcomingCard = ({ item, onViewDetails, onRegister }) => (
 
 // ── Component ─────────────────────────────────────────────────────────────────
 export default function EventTab({ navigation }) {
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    // Simulate data loading
+    const timer = setTimeout(() => setLoading(false), 1500);
+    return () => clearTimeout(timer);
+  }, []);
+
   const handleViewDetails = (item) => {
     navigation.navigate('OngoingEventScreen', { event: item });
   };
@@ -144,9 +154,10 @@ export default function EventTab({ navigation }) {
           <Text style={styles.topbarTitle}>Events</Text>
           {/* <Text style={styles.topbarSub}>PICT Campus Connect</Text> */}
         </View>
-        <TouchableOpacity style={styles.bellBtn}>
-          <BellIcon size={16} color={COLORS.primary} />
-        </TouchableOpacity>
+        <Image
+          source={require('../../assets/pict logo.png')}
+          style={{ width: 40, height: 40, resizeMode: 'contain' }}
+        />
       </View>
 
       <ScrollView
@@ -156,7 +167,15 @@ export default function EventTab({ navigation }) {
       >
         {/* ── Ongoing Events ── */}
         <Text style={styles.sectionTitle}>Ongoing Events</Text>
-        {ongoingEvents.length > 0 ? (
+        {loading ? (
+          [1, 2].map(key => (
+            <View key={key} style={styles.ongoingCard}>
+               <Skeleton width={80} height={20} style={{ marginBottom: 12 }} />
+               <Skeleton width={120} height={14} style={{ marginBottom: 4 }} />
+               <Skeleton width="100%" height={16} />
+            </View>
+          ))
+        ) : ongoingEvents.length > 0 ? (
           ongoingEvents.map(item => (
             <OngoingCard
               key={item.id}
@@ -172,7 +191,18 @@ export default function EventTab({ navigation }) {
         <Text style={[styles.sectionTitle, styles.sectionTitleUpcoming]}>
           Upcoming Events
         </Text>
-        {upcomingEvents.length > 0 ? (
+        {loading ? (
+          [1, 2, 3].map(key => (
+            <View key={key} style={styles.upcomingCard}>
+               <View style={styles.upcomingLeft}>
+                 <Skeleton width={80} height={20} style={{ marginBottom: 12 }} />
+                 <Skeleton width={120} height={14} style={{ marginBottom: 4 }} />
+                 <Skeleton width="100%" height={16} />
+               </View>
+               <Skeleton width={72} height={36} borderRadius={18} />
+            </View>
+          ))
+        ) : upcomingEvents.length > 0 ? (
           upcomingEvents.map(item => (
             <UpcomingCard
               key={item.id}
@@ -253,11 +283,14 @@ const styles = StyleSheet.create({
   // Ongoing card
   ongoingCard: {
     backgroundColor: COLORS.card,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    padding: 14,
-    marginBottom: 10,
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1.5 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
   },
   liveBadge: {
     position: 'absolute',
@@ -277,11 +310,14 @@ const styles = StyleSheet.create({
   // Upcoming card
   upcomingCard: {
     backgroundColor: COLORS.card,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    padding: 14,
-    marginBottom: 10,
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1.5 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
@@ -327,9 +363,9 @@ const styles = StyleSheet.create({
   // Register Now button
   registerBtn: {
     backgroundColor: COLORS.primary,
-    borderRadius: 10,
+    borderRadius: 18,
     paddingVertical: 10,
-    paddingHorizontal: 12,
+    paddingHorizontal: 14,
     alignItems: 'center',
     justifyContent: 'center',
     minWidth: 72,

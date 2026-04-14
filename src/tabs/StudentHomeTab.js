@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
+import { Ionicons } from '@expo/vector-icons';
 import {
   View,
   Text,
@@ -7,35 +8,40 @@ import {
   StyleSheet,
   StatusBar,
   ActivityIndicator,
+  Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { auth, db } from '../api/firebase/firebaseConfig';
+import { useAuth } from '../context/AuthContext';
+import useTimetable from '../hooks/useTimetable';
 import {
-  doc,
-  getDoc,
   collection,
   query,
   where,
   limit,
   getDocs,
 } from 'firebase/firestore';
+import { db } from '../api/firebase/firebaseConfig';
+import { useState, useEffect } from 'react';
 import Svg, { Path, Circle, Rect, Line, Polyline } from 'react-native-svg';
+import { isScheduleStale, syncScheduleWithNotifications } from '../services/NotificationManager';
+import Skeleton from '../components/Skeleton';
 
 // ── Colors ────────────────────────────────────────────────────────────────────
 const COLORS = {
-  primary:       '#3D6EE8',
-  primaryLight:  '#EEF3FD',
-  background:    '#F5F6FA',
-  card:          '#FFFFFF',
-  border:        '#E0E7F5',
-  textPrimary:   '#111111',
-  textSecondary: '#888888',
-  textMuted:     '#BBBBBB',
-  white:         '#FFFFFF',
-  green:         '#059669',
-  greenLight:    '#ECFDF5',
-  greenBorder:   '#D1FAE5',
-  amber:         '#F59E0B',
+  primary: '#007AFF',
+  primaryLight: '#E5F1FF',
+  background: '#F2F2F7',
+  card: '#FFFFFF',
+  border: '#E5E5EA',
+  textPrimary: '#000000',
+  textSecondary: '#3C3C43',
+  textMuted: '#8E8E93',
+  white: '#FFFFFF',
+  green: '#34C759',
+  greenLight: '#E8F8EE',
+  greenBorder: '#D1FAE5',
+  amber: '#FF9500',
+  red: '#FF3B30',
 };
 
 // ── Icons ─────────────────────────────────────────────────────────────────────
@@ -75,81 +81,67 @@ const SectionRow = ({ title, onViewAll }) => (
 
 // ── Component ─────────────────────────────────────────────────────────────────
 export default function StudentHomeTab({ navigation }) {
-  const [userData, setUserData] = useState(null);
-  const [todayClasses, setTodayClasses] = useState([]);
+  const { profile, divisionPath } = useAuth();
+  const { todayClasses, ongoingClass, upcomingClass, loading: ttLoading, error: ttError } = useTimetable();
+
   const [todayCompany, setTodayCompany] = useState(null);
   const [notices, setNotices] = useState([]);
   const [upcomingEvents, setUpcomingEvents] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [extraLoading, setExtraLoading] = useState(true);
 
   useEffect(() => {
-    const fetchData = async () => {
+    const fetchExtras = async () => {
       try {
-        const currentUser = auth.currentUser;
-        if (!currentUser?.uid) { setLoading(false); return; }
-
-        // 1. User profile
-        const userSnap = await getDoc(doc(db, 'users', currentUser.uid));
-        if (userSnap.exists()) {
-          const profile = userSnap.data();
-          setUserData(profile);
-
-          // 2. Timetable
-          const classValue = String(profile.class || profile.className || '').trim();
-          const classParts = classValue.includes('-') ? classValue.split('-') : classValue.split('_');
-          const division = String(classParts[classParts.length - 1] || '1').trim();
-          const year = String(profile.year || profile.academicYear || 'TE').trim();
-          const dept = String(profile.dept || 'CS').trim().toUpperCase();
-          const timetableId = `${dept}_${year}_${division}`;
-          const ttSnap = await getDoc(doc(db, 'timetables', timetableId));
-          if (ttSnap.exists()) {
-            const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
-            const dayClasses = ttSnap.data()?.[days[new Date().getDay()]] || [];
-            setTodayClasses(Array.isArray(dayClasses) ? dayClasses : []);
-          }
-        }
-
-        // 3. Today's company
+        // 1. Today's company
         const companySnap = await getDocs(
           query(collection(db, 'placement_drives'), where('status', '==', 'today'), limit(1))
         );
         if (!companySnap.empty) setTodayCompany(companySnap.docs[0].data());
 
-        // 4. Recent notices
-        const noticeSnap = await getDocs(
-          query(collection(db, 'notices'), limit(2))
-        );
+        // 2. Recent notices
+        const noticeSnap = await getDocs(query(collection(db, 'notices'), limit(2)));
         setNotices(noticeSnap.docs.map(d => ({ id: d.id, ...d.data() })));
 
-        // 5. Upcoming events
+        // 3. Upcoming events
         const eventsSnap = await getDocs(
           query(collection(db, 'events'), where('status', '==', 'upcoming'), limit(2))
         );
         setUpcomingEvents(eventsSnap.docs.map(d => ({ id: d.id, ...d.data() })));
-
-        setLoading(false);
       } catch (e) {
-        console.error('StudentHomeTab fetch error:', e);
-        setLoading(false);
+        console.error('StudentHomeTab extras fetch error:', e);
+      } finally {
+        setExtraLoading(false);
       }
     };
-    fetchData();
+    fetchExtras();
   }, []);
 
-  if (loading) {
-    return (
-      <View style={styles.loader}>
-        <ActivityIndicator size="large" color={COLORS.primary} />
-      </View>
-    );
-  }
+  // ── Re-sync local notifications if timetable changed ──
+  useEffect(() => {
+    if (!divisionPath || !profile?.batch) return;
+    (async () => {
+      try {
+        const stale = await isScheduleStale(divisionPath);
+        if (stale) {
+          const count = await syncScheduleWithNotifications(divisionPath, profile.batch);
+          console.log(`[HomeTab] Re-synced ${count} notifications`);
+        } else {
+          console.log('[HomeTab] Notification schedule is current.');
+        }
+      } catch (err) {
+        console.warn('[HomeTab] Notification sync check failed:', err);
+      }
+    })();
+  }, [divisionPath, profile?.batch]);
 
-  const initials = userData?.name
-    ? userData.name.split(' ').map(w => w[0]).join('').substring(0, 2).toUpperCase()
+  const initials = profile?.name
+    ? profile.name.split(' ').map(w => w[0]).join('').substring(0, 2).toUpperCase()
     : 'ST';
 
-  const ongoingClass = todayClasses[0] || null;
-  const nextClass = todayClasses[1] || null;
+  // ── Derive dept/year from divisionPath via AuthContext ──
+  const dept = profile?.dept || 'ENTC';
+  const year = profile?.year || 'TE';
+  const studentId = profile?.email?.split('@')[0] || '';
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
@@ -162,11 +154,11 @@ export default function StudentHomeTab({ navigation }) {
           onPress={() => navigation.navigate('StudentProfileScreen')}
           activeOpacity={0.8}
         >
-          <Text style={styles.avatarText}>{initials}</Text>
+          <Ionicons name="person" size={20} color={COLORS.primary} />
         </TouchableOpacity>
         <View style={styles.topbarInfo}>
-          <Text style={styles.greet}>{userData?.name?.split(' ')[0] ? `Hello, ${userData.name.split(' ')[0]}` : 'Hello!'}</Text>
-          <Text style={styles.roleTag}>Student · {userData?.year || 'TE'}-{userData?.dept || 'COMP'} · {userData?.pictId || ''}</Text>
+          <Text style={styles.greet}>{profile?.name?.split(' ')[0] ? `Hello, ${profile.name.split(' ')[0]}` : 'Hello!'}</Text>
+          <Text style={styles.roleTag}>Student · {year}-{dept} · {studentId}</Text>
         </View>
         <TouchableOpacity
           style={styles.bellBtn}
@@ -174,6 +166,10 @@ export default function StudentHomeTab({ navigation }) {
         >
           <NotesIcon />
         </TouchableOpacity>
+        <Image
+          source={require('../../assets/pict logo.png')}
+          style={{ width: 40, height: 40, resizeMode: 'contain', marginLeft: 12 }}
+        />
       </View>
 
       <ScrollView
@@ -183,7 +179,24 @@ export default function StudentHomeTab({ navigation }) {
       >
         {/* ── Timetable ── */}
         <SectionRow title="Time Table" onViewAll={() => navigation.navigate('TimetableScreen')} />
-        {todayClasses.length > 0 ? (
+        {ttLoading ? (
+          [1, 2].map(key => (
+            <View key={key} style={styles.classCard}>
+              <View style={styles.timeCol}>
+                <Skeleton width={40} height={14} style={{ marginBottom: 4 }} />
+              </View>
+              <View style={styles.vDivider} />
+              <View style={styles.classInfo}>
+                <Skeleton width={120} height={16} style={{ marginBottom: 6 }} />
+                <Skeleton width={80} height={14} />
+              </View>
+            </View>
+          ))
+        ) : ttError ? (
+          <View style={styles.errorCard}>
+            <Text style={styles.errorText}>{ttError}</Text>
+          </View>
+        ) : todayClasses.length > 0 ? (
           todayClasses.slice(0, 2).map((item, i) => (
             <View key={i} style={styles.classCard}>
               <View style={styles.timeCol}>
@@ -192,8 +205,11 @@ export default function StudentHomeTab({ navigation }) {
               </View>
               <View style={styles.vDivider} />
               <View style={styles.classInfo}>
-                <Text style={styles.subject}>{item.sub}</Text>
-                <Text style={styles.teacher}>{item.teacher} · Room {item.room}</Text>
+                <Text style={styles.subject}>{item.sub || item.subject}</Text>
+                <Text style={styles.teacher}>
+                  {item.teacher || item.type || ''}{item.room ? ` · Room ${item.room}` : ''}
+                  {item.batch && item.batch !== 'all' ? ` · Batch ${item.batch}` : ''}
+                </Text>
               </View>
             </View>
           ))
@@ -201,39 +217,73 @@ export default function StudentHomeTab({ navigation }) {
           <Text style={styles.emptyText}>No classes today.</Text>
         )}
 
-        {/* ── Lecture Status ── */}
+        {/* ── Lecture Status (time-aware) ── */}
         <Text style={[styles.secTitle, { marginBottom: 8, marginTop: 4 }]}>Lecture Status</Text>
         <View style={styles.statusRow}>
-          <View style={[styles.statusCard, { backgroundColor: COLORS.greenLight, borderColor: COLORS.greenBorder }]}>
-            <View style={[styles.statusDot, { backgroundColor: COLORS.green }]} />
-            <View>
-              <Text style={[styles.statusText, { color: '#065F46' }]}>Ongoing</Text>
-              <Text style={styles.statusSub}>{ongoingClass ? `${ongoingClass.sub} · ${ongoingClass.room}` : 'No class now'}</Text>
-            </View>
-          </View>
-          <View style={[styles.statusCard, { backgroundColor: COLORS.primaryLight, borderColor: COLORS.border }]}>
-            <View style={[styles.statusDot, { backgroundColor: COLORS.amber }]} />
-            <View>
-              <Text style={styles.statusText}>Upcoming</Text>
-              <Text style={styles.statusSub}>{nextClass ? `${nextClass.sub} · ${nextClass.time}` : 'No next class'}</Text>
-            </View>
-          </View>
+          {ttLoading ? (
+            <>
+              <View style={[styles.statusCard, { backgroundColor: COLORS.greenLight }]}>
+                <Skeleton width="80%" height={14} style={{ marginBottom: 4 }} />
+                <Skeleton width="60%" height={12} />
+              </View>
+              <View style={[styles.statusCard, { backgroundColor: COLORS.primaryLight }]}>
+                <Skeleton width="80%" height={14} style={{ marginBottom: 4 }} />
+                <Skeleton width="60%" height={12} />
+              </View>
+            </>
+          ) : (
+            <>
+              <View style={[styles.statusCard, { backgroundColor: COLORS.greenLight, borderColor: COLORS.greenBorder }]}>
+                <View style={[styles.statusDot, { backgroundColor: COLORS.green }]} />
+                <View>
+                  <Text style={[styles.statusText, { color: '#065F46' }]}>Ongoing</Text>
+                  <Text style={styles.statusSub}>
+                    {ongoingClass ? `${ongoingClass.sub || ongoingClass.subject} · ${ongoingClass.room || ''}` : 'No class now'}
+                  </Text>
+                </View>
+              </View>
+              <View style={[styles.statusCard, { backgroundColor: COLORS.primaryLight, borderColor: COLORS.border }]}>
+                <View style={[styles.statusDot, { backgroundColor: COLORS.amber }]} />
+                <View>
+                  <Text style={styles.statusText}>Upcoming</Text>
+                  <Text style={styles.statusSub}>
+                    {upcomingClass ? `${upcomingClass.sub || upcomingClass.subject} · ${upcomingClass.time}` : 'No next class'}
+                  </Text>
+                </View>
+              </View>
+            </>
+          )}
         </View>
 
         {/* ── Today's Company ── */}
-        {todayCompany && (
+        {extraLoading ? (
+          <>
+            <Text style={[styles.secTitle, { marginBottom: 8, marginTop: 4 }]}>Today's Company</Text>
+            <View style={styles.companyCard}>
+              <View style={styles.companyHeader}>
+                <View style={{ flex: 1, marginRight: 10 }}>
+                  <Skeleton width={150} height={20} style={{ marginBottom: 6 }} baseColor="rgba(255,255,255,0.2)" highlightColor="rgba(255,255,255,0.4)" />
+                  <Skeleton width={100} height={14} style={{ marginBottom: 4 }} baseColor="rgba(255,255,255,0.2)" highlightColor="rgba(255,255,255,0.4)" />
+                  <Skeleton width={120} height={14} baseColor="rgba(255,255,255,0.2)" highlightColor="rgba(255,255,255,0.4)" />
+                </View>
+                <Skeleton width={46} height={46} borderRadius={10} baseColor="rgba(255,255,255,0.2)" highlightColor="rgba(255,255,255,0.4)" />
+              </View>
+              <Skeleton width="80%" height={14} style={{ marginTop: 8 }} baseColor="rgba(255,255,255,0.2)" highlightColor="rgba(255,255,255,0.4)" />
+            </View>
+          </>
+        ) : todayCompany && (
           <>
             <Text style={[styles.secTitle, { marginBottom: 8, marginTop: 4 }]}>Today's Company</Text>
             <TouchableOpacity
               style={styles.companyCard}
               onPress={() => navigation.navigate('TodayCompanyScreen', {
                 company: {
-                  name:           todayCompany.companyName,
-                  service:        todayCompany.role || 'Software Engineer',
-                  package:        todayCompany.lpa,
-                  eligibility:    todayCompany.eligibility,
-                  reportingTime:  todayCompany.reportingTime,
-                  venue:          todayCompany.venue,
+                  name: todayCompany.companyName,
+                  service: todayCompany.role || 'Software Engineer',
+                  package: todayCompany.lpa,
+                  eligibility: todayCompany.eligibility,
+                  reportingTime: todayCompany.reportingTime,
+                  venue: todayCompany.venue,
                   skillsRequired: todayCompany.skills,
                 },
               })}
@@ -260,7 +310,14 @@ export default function StudentHomeTab({ navigation }) {
 
         {/* ── Notices ── */}
         <SectionRow title="Notices" onViewAll={() => navigation.navigate('Notice')} />
-        {notices.length > 0 ? (
+        {extraLoading ? (
+          [1, 2].map(key => (
+            <View key={key} style={styles.noticeCard}>
+              <View style={styles.noticeDot} />
+              <Skeleton width="60%" height={16} />
+            </View>
+          ))
+        ) : notices.length > 0 ? (
           notices.map(item => (
             <View key={item.id} style={styles.noticeCard}>
               <View style={[styles.noticeDot, item.category === 'Holiday' && { backgroundColor: COLORS.amber }]} />
@@ -275,11 +332,23 @@ export default function StudentHomeTab({ navigation }) {
         {/* ── Upcoming Events ── */}
         <SectionRow title="Upcoming Events" onViewAll={() => navigation.navigate('Events')} />
         <View style={styles.eventsGrid}>
-          {upcomingEvents.length > 0 ? (
+          {extraLoading ? (
+            [1, 2].map(key => (
+              <View key={key} style={styles.eventCard}>
+                <View style={styles.eventNameBox}>
+                  <Skeleton width="80%" height={16} />
+                </View>
+                <Skeleton width="50%" height={12} style={{ marginTop: 4 }} />
+                <Skeleton width="100%" height={26} borderRadius={6} style={{ marginTop: 8 }} />
+              </View>
+            ))
+          ) : upcomingEvents.length > 0 ? (
             upcomingEvents.map(item => (
               <View key={item.id} style={styles.eventCard}>
-                <Text style={styles.eventName}>{item.name}</Text>
-                <Text style={styles.eventDesc}>{item.date}</Text>
+                <View style={styles.eventNameBox}>
+                  <Text style={styles.eventNameText} numberOfLines={1}>{item.name}</Text>
+                </View>
+                <Text style={styles.eventDesc} numberOfLines={1}>{item.date}</Text>
                 <TouchableOpacity
                   style={styles.regBtn}
                   onPress={() => navigation.navigate('UpcomingEventScreen', { event: item })}
@@ -345,13 +414,16 @@ const styles = StyleSheet.create({
 
   classCard: {
     backgroundColor: COLORS.card,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    padding: 10,
+    borderRadius: 16,
+    padding: 14,
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1.5 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
   },
   timeCol: { width: 56, alignItems: 'center', flexShrink: 0 },
   timeVal: { fontSize: 11, fontWeight: '700', color: COLORS.primary, lineHeight: 15, textAlign: 'center' },
@@ -361,25 +433,32 @@ const styles = StyleSheet.create({
   subject: { fontSize: 13, fontWeight: '700', color: COLORS.textPrimary },
   teacher: { fontSize: 11, color: COLORS.textSecondary, marginTop: 2 },
 
-  statusRow: { flexDirection: 'row', marginBottom: 12 },
+  statusRow: { gap: 12, marginBottom: 16 },
   statusCard: {
-    flex: 1,
-    borderRadius: 12,
-    borderWidth: 1,
-    padding: 10,
+    borderRadius: 16,
+    padding: 16,
     flexDirection: 'row',
     alignItems: 'center',
-    marginRight: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 3,
+    elevation: 2,
   },
-  statusDot: { width: 8, height: 8, borderRadius: 4, marginRight: 8, flexShrink: 0 },
-  statusText: { fontSize: 12, fontWeight: '600', color: COLORS.textPrimary },
-  statusSub: { fontSize: 10, color: COLORS.textSecondary, marginTop: 1 },
+  statusDot: { width: 10, height: 10, borderRadius: 5, marginRight: 12, flexShrink: 0 },
+  statusText: { fontSize: 14, fontWeight: '700', color: COLORS.textPrimary },
+  statusSub: { fontSize: 13, color: COLORS.textSecondary, marginTop: 4 },
 
   companyCard: {
     backgroundColor: COLORS.primary,
-    borderRadius: 14,
-    padding: 14,
-    marginBottom: 12,
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 16,
+    shadowColor: COLORS.primary,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.2,
+    shadowRadius: 6,
+    elevation: 4,
   },
   companyHeader: { flexDirection: 'row', alignItems: 'flex-start' },
   companyName: { fontSize: 16, fontWeight: '800', color: COLORS.white },
@@ -398,32 +477,38 @@ const styles = StyleSheet.create({
 
   noticeCard: {
     backgroundColor: COLORS.card,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    padding: 10,
+    borderRadius: 12,
+    padding: 12,
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 6,
+    marginBottom: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 3,
+    elevation: 1,
   },
-  noticeDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: COLORS.primary, marginRight: 8, flexShrink: 0 },
+  noticeDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: COLORS.primary, marginRight: 10, flexShrink: 0 },
   noticeText: { flex: 1, fontSize: 13, fontWeight: '600', color: COLORS.textPrimary },
-  noticeTime: { fontSize: 10, color: COLORS.textMuted, marginLeft: 8 },
+  noticeTime: { fontSize: 11, color: COLORS.textMuted, marginLeft: 8 },
 
-  eventsGrid: { flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4 },
+  eventsGrid: { flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -6 },
   eventCard: {
     width: '50%',
-    paddingHorizontal: 4,
-    marginBottom: 8,
+    paddingHorizontal: 6,
+    marginBottom: 12,
   },
-  eventCardInner: {
+  eventNameBox: {
     backgroundColor: COLORS.card,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    padding: 10,
+    borderRadius: 14,
+    padding: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1.5 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
   },
-  eventName: { fontSize: 13, fontWeight: '700', color: COLORS.textPrimary, backgroundColor: COLORS.card, borderRadius: 12, borderWidth: 1, borderColor: COLORS.border, padding: 10 },
+  eventNameText: { fontSize: 13, fontWeight: '700', color: COLORS.textPrimary },
   eventDesc: { fontSize: 11, color: COLORS.textSecondary, marginTop: 2, lineHeight: 15 },
   regBtn: {
     backgroundColor: COLORS.primary,
@@ -435,4 +520,14 @@ const styles = StyleSheet.create({
   regBtnText: { fontSize: 11, fontWeight: '700', color: COLORS.white },
 
   emptyText: { fontSize: 13, color: COLORS.textMuted, fontStyle: 'italic', marginBottom: 8 },
+
+  errorCard: {
+    backgroundColor: '#FEF2F2',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#FECACA',
+    padding: 12,
+    marginBottom: 8,
+  },
+  errorText: { fontSize: 12, color: COLORS.red, fontWeight: '500' },
 });

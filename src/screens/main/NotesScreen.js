@@ -16,7 +16,14 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Svg, { Path, Polyline, Line } from 'react-native-svg';
 import * as FileSystem from 'expo-file-system/legacy';
-import * as Sharing from 'expo-sharing';
+// expo-sharing requires a native module — import lazily to avoid crash
+// if the current dev build doesn't include it yet.
+let Sharing = null;
+try {
+  Sharing = require('expo-sharing');
+} catch (e) {
+  console.warn('[NotesScreen] expo-sharing native module not available. Sharing will be disabled.');
+}
 
 // ── Colors ────────────────────────────────────────────────────────────────────
 const COLORS = {
@@ -55,6 +62,7 @@ export default function NotesScreen({ navigation }) {
   const [isEditing, setIsEditing] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
   const [newNoteText, setNewNoteText] = useState('');
+  const [isDownloading, setIsDownloading] = useState(false);
 
   // ── Load notes from AsyncStorage on mount ─────────────────────────────────
   const [hasLoaded, setHasLoaded] = useState(false);
@@ -142,16 +150,19 @@ export default function NotesScreen({ navigation }) {
 
   // ── Download — saves as .txt and shares ──────────────────────────────────
   const handleDownload = async () => {
+    if (isDownloading) return;
     if (notes.length === 0) {
       Alert.alert('No Notes', 'Add some notes before downloading.');
       return;
     }
+    
+    setIsDownloading(true);
     try {
       const content = notes.map((n) => `• ${n.text}`).join('\n');
       const fileName = `CampusConnect_Notes_${Date.now()}.txt`;
       const fileUri = FileSystem.documentDirectory + fileName;
       await FileSystem.writeAsStringAsync(fileUri, content);
-      const canShare = await Sharing.isAvailableAsync();
+      const canShare = Sharing ? await Sharing.isAvailableAsync() : false;
       if (canShare) {
         await Sharing.shareAsync(fileUri, {
           mimeType: 'text/plain',
@@ -162,8 +173,14 @@ export default function NotesScreen({ navigation }) {
         Alert.alert('Saved', `File saved to app documents:\n${fileName}`);
       }
     } catch (e) {
-      Alert.alert('Error', 'Could not download notes. Please try again.');
-      console.error('Download error:', e);
+      if (e.message && e.message.includes('Another share request is being processed')) {
+        // User tapped multiple times, ignore or wait
+      } else {
+        Alert.alert('Error', 'Could not download notes. Please try again.');
+        console.error('Download error:', e);
+      }
+    } finally {
+      setIsDownloading(false);
     }
   };
 

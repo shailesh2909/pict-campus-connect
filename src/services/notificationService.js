@@ -9,15 +9,35 @@
 
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
+import Constants from 'expo-constants';
+import { isGuardianActive } from './NotificationManager';
 
-// ── Foreground notification behaviour ──────────────────
+// ── Foreground notification behaviour ────────────────────────────────────────
 // Show the notification banner even when the app is in the foreground.
+// Exception: suppress scheduled lecture notifications when the Guardian is
+// active — the Guardian already displays a non-swipable ongoing notification.
 Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: true,
-  }),
+  handleNotification: async (notification) => {
+    const data = notification.request?.content?.data;
+
+    // If this is a scheduled lecture notification AND the guardian is running,
+    // suppress it to prevent duplicate notifications.
+    if (data?.source === 'campus_connect_schedule' && isGuardianActive()) {
+      return {
+        shouldShowBanner: false,
+        shouldShowList: false,
+        shouldPlaySound: false,
+        shouldSetBadge: false,
+      };
+    }
+
+    return {
+      shouldShowBanner: true,
+      shouldShowList: true,
+      shouldPlaySound: true,
+      shouldSetBadge: true,
+    };
+  },
 });
 
 /**
@@ -40,15 +60,7 @@ export async function registerForPushNotificationsAsync() {
       return null;
     }
 
-    // 2. Get the Expo push token (maps to FCM under the hood on Android)
-    const tokenData = await Notifications.getExpoPushTokenAsync({
-      projectId: process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID,
-    });
-
-    const token = tokenData.data;
-    console.log('[Notifications] Expo push token:', token);
-
-    // 3. Android-specific channel (required for Android 8+)
+    // 2. Android channel — must be set before token fetch (required for Android 8+)
     if (Platform.OS === 'android') {
       await Notifications.setNotificationChannelAsync('default', {
         name: 'Default',
@@ -58,7 +70,26 @@ export async function registerForPushNotificationsAsync() {
       });
     }
 
+    // 3. Read Expo project UUID from app.json → extra.eas.projectId
+    //    ⚠️ Do NOT use EXPO_PUBLIC_FIREBASE_PROJECT_ID here — that is the
+    //    Firebase project name, not the Expo UUID. Expo's server will reject it.
+    const projectId = Constants.expoConfig?.extra?.eas?.projectId;
+
+    if (!projectId) {
+      console.error(
+        '[Notifications] projectId not found. ' +
+        'Make sure app.json has: extra.eas.projectId = "<your-expo-uuid>"'
+      );
+      return null;
+    }
+
+    // 4. Get the Expo push token (maps to FCM under the hood on Android)
+    const tokenData = await Notifications.getExpoPushTokenAsync({ projectId });
+    const token = tokenData.data;
+
+    console.log('[Notifications] Expo push token:', token);
     return token;
+
   } catch (error) {
     console.error('[Notifications] Registration failed:', error);
     return null;
@@ -75,11 +106,11 @@ export async function registerForPushNotificationsAsync() {
  */
 export function setupNotificationListeners(onNotificationReceived, onNotificationResponse) {
   const receivedSub = Notifications.addNotificationReceivedListener(
-    onNotificationReceived || (() => {}),
+    onNotificationReceived || (() => { }),
   );
 
   const responseSub = Notifications.addNotificationResponseReceivedListener(
-    onNotificationResponse || (() => {}),
+    onNotificationResponse || (() => { }),
   );
 
   return {

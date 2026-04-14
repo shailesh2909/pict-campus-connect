@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { Ionicons } from '@expo/vector-icons';
 import {
   View,
   Text,
@@ -7,35 +8,36 @@ import {
   StyleSheet,
   StatusBar,
   ActivityIndicator,
+  Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { auth, db } from '../api/firebase/firebaseConfig';
+import { useAuth } from '../context/AuthContext';
 import {
-  doc,
-  getDoc,
   collection,
   query,
   where,
   limit,
   getDocs,
 } from 'firebase/firestore';
+import { db } from '../api/firebase/firebaseConfig';
 import Svg, { Path, Rect, Line } from 'react-native-svg';
+import Skeleton from '../components/Skeleton';
 
 // ── Colors ────────────────────────────────────────────────────────────────────
 const COLORS = {
-  primary:       '#3D6EE8',
-  primaryLight:  '#EEF3FD',
-  background:    '#F5F6FA',
-  card:          '#FFFFFF',
-  border:        '#E0E7F5',
-  textPrimary:   '#111111',
-  textSecondary: '#888888',
-  textMuted:     '#BBBBBB',
-  white:         '#FFFFFF',
-  green:         '#059669',
-  greenLight:    '#ECFDF5',
-  greenBorder:   '#D1FAE5',
-  amber:         '#F59E0B',
+  primary: '#007AFF',
+  primaryLight: '#E5F1FF',
+  background: '#F2F2F7',
+  card: '#FFFFFF',
+  border: '#E5E5EA',
+  textPrimary: '#000000',
+  textSecondary: '#3C3C43',
+  textMuted: '#8E8E93',
+  white: '#FFFFFF',
+  green: '#34C759',
+  greenLight: '#E8F8EE',
+  greenBorder: '#D1FAE5',
+  amber: '#FF9500',
 };
 
 // ── Notes Icon ────────────────────────────────────────────────────────────────
@@ -75,7 +77,8 @@ const SectionRow = ({ title, onViewAll }) => (
 
 // ── Component ─────────────────────────────────────────────────────────────────
 export default function FacultyHomeTab({ navigation }) {
-  const [userData, setUserData] = useState(null);
+  const { profile } = useAuth();
+
   const [todaySchedule, setTodaySchedule] = useState([]);
   const [todayCompany, setTodayCompany] = useState(null);
   const [notices, setNotices] = useState([]);
@@ -85,18 +88,11 @@ export default function FacultyHomeTab({ navigation }) {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const currentUser = auth.currentUser;
-        if (!currentUser?.uid) { setLoading(false); return; }
-
-        // 1. Faculty profile
-        const userSnap = await getDoc(doc(db, 'users', currentUser.uid));
-        if (userSnap.exists()) {
-          const profile = userSnap.data();
-          setUserData(profile);
-
-          // 2. Faculty teaching schedule
+        // 1. Faculty teaching schedule
+        if (profile?.facultyId || profile?.uid) {
+          const facultyId = profile.facultyId || profile.uid;
           const scheduleSnap = await getDocs(
-            query(collection(db, 'faculty_schedules'), where('facultyId', '==', currentUser.uid), limit(1))
+            query(collection(db, 'faculty_schedules'), where('facultyId', '==', facultyId), limit(1))
           );
           if (!scheduleSnap.empty) {
             const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
@@ -105,17 +101,17 @@ export default function FacultyHomeTab({ navigation }) {
           }
         }
 
-        // 3. Today's company
+        // 2. Today's company
         const companySnap = await getDocs(
           query(collection(db, 'placement_drives'), where('status', '==', 'today'), limit(1))
         );
         if (!companySnap.empty) setTodayCompany(companySnap.docs[0].data());
 
-        // 4. Recent notices
+        // 3. Recent notices
         const noticeSnap = await getDocs(query(collection(db, 'notices'), limit(2)));
         setNotices(noticeSnap.docs.map(d => ({ id: d.id, ...d.data() })));
 
-        // 5. Upcoming events
+        // 4. Upcoming events
         const eventsSnap = await getDocs(
           query(collection(db, 'events'), where('status', '==', 'upcoming'), limit(2))
         );
@@ -128,22 +124,65 @@ export default function FacultyHomeTab({ navigation }) {
       }
     };
     fetchData();
-  }, []);
+  }, [profile]);
 
-  if (loading) {
-    return (
-      <View style={styles.loader}>
-        <ActivityIndicator size="large" color={COLORS.primary} />
-      </View>
-    );
-  }
-
-  const initials = userData?.name
-    ? userData.name.split(' ').map(w => w[0]).join('').substring(0, 2).toUpperCase()
+  const initials = profile?.name
+    ? profile.name.split(' ').map(w => w[0]).join('').substring(0, 2).toUpperCase()
     : 'FA';
 
-  const ongoingLecture = todaySchedule[0] || null;
-  const nextLecture = todaySchedule[1] || null;
+  const getCurrentISTMinutes = () => {
+    const now = new Date();
+    const istOffset = 5.5 * 60 * 60 * 1000;
+    const ist = new Date(now.getTime() + istOffset + now.getTimezoneOffset() * 60 * 1000);
+    return ist.getHours() * 60 + ist.getMinutes();
+  };
+
+  const parseTimeToMinutes = (timeStr) => {
+    if (!timeStr) return 0;
+    const cleaned = timeStr.trim().toUpperCase();
+    const isPM = cleaned.includes('PM');
+    const isAM = cleaned.includes('AM');
+    const timePart = cleaned.replace(/[^\d:]/g, '');
+    const parts = timePart.split(':');
+    if (parts.length < 2 && (!parts[0] || parts[0] === '')) return 0;
+    let hours = parseInt(parts[0] || '0', 10);
+    let minutes = parseInt(parts[1] || '0', 10);
+    if (isPM && hours < 12) hours += 12;
+    if (isAM && hours === 12) hours = 0;
+    if (!isPM && !isAM && hours >= 1 && hours <= 7) hours += 12;
+    return hours * 60 + minutes;
+  };
+
+  const parseTimeRange = (timeStr) => {
+    if (!timeStr) return { start: 0, end: 0 };
+    const normalized = timeStr.replace(/\s*to\s*/i, '-').replace(/–/g, '-');
+    const parts = normalized.split('-').map(s => s.trim());
+    return {
+      start: parseTimeToMinutes(parts[0]),
+      end: parts[1] ? parseTimeToMinutes(parts[1]) : parseTimeToMinutes(parts[0]) + 60,
+    };
+  };
+
+  const [nowMinutes, setNowMinutes] = useState(getCurrentISTMinutes());
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setNowMinutes(getCurrentISTMinutes());
+    }, 60000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const ongoingLecture = todaySchedule.find(entry => {
+    const { start, end } = parseTimeRange(entry.time);
+    return nowMinutes >= start && nowMinutes < end;
+  }) || null;
+
+  const nextLecture = [...todaySchedule].sort((a, b) => {
+    return parseTimeRange(a.time).start - parseTimeRange(b.time).start;
+  }).find(entry => {
+    const { start } = parseTimeRange(entry.time);
+    return start > nowMinutes;
+  }) || null;
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
@@ -156,11 +195,11 @@ export default function FacultyHomeTab({ navigation }) {
           onPress={() => navigation.navigate('FacultyProfileScreen')}
           activeOpacity={0.8}
         >
-          <Text style={styles.avatarText}>{initials}</Text>
+          <Ionicons name="person" size={20} color={COLORS.primary} />
         </TouchableOpacity>
         <View style={styles.topbarInfo}>
-          <Text style={styles.greet}>{userData?.name || 'Hello!'}</Text>
-          <Text style={styles.roleTag}>Faculty · {userData?.dept || 'Computer'} Dept.</Text>
+          <Text style={styles.greet}>{profile?.name || 'Hello!'}</Text>
+          <Text style={styles.roleTag}>Faculty · {profile?.dept || 'Computer'} Dept.</Text>
         </View>
         <TouchableOpacity
           style={styles.notesBtn}
@@ -168,6 +207,10 @@ export default function FacultyHomeTab({ navigation }) {
         >
           <NotesIcon />
         </TouchableOpacity>
+        <Image
+          source={require('../../assets/pict logo.png')}
+          style={{ width: 40, height: 40, resizeMode: 'contain', marginLeft: 12 }}
+        />
       </View>
 
       <ScrollView
@@ -177,7 +220,20 @@ export default function FacultyHomeTab({ navigation }) {
       >
         {/* ── Teaching Schedule ── */}
         <SectionRow title="My Teaching Schedule" onViewAll={() => navigation.navigate('TimetableScreen')} />
-        {todaySchedule.length > 0 ? (
+        {loading ? (
+          [1, 2].map(key => (
+            <View key={key} style={styles.classCard}>
+              <View style={styles.timeCol}>
+                <Skeleton width={40} height={14} style={{ marginBottom: 4 }} />
+              </View>
+              <View style={styles.vDivider} />
+              <View style={styles.classInfo}>
+                <Skeleton width={120} height={16} style={{ marginBottom: 6 }} />
+                <Skeleton width={80} height={14} />
+              </View>
+            </View>
+          ))
+        ) : todaySchedule.length > 0 ? (
           todaySchedule.slice(0, 2).map((item, i) => (
             <View key={i} style={styles.classCard}>
               <View style={styles.timeCol}>
@@ -198,28 +254,58 @@ export default function FacultyHomeTab({ navigation }) {
         {/* ── Lecture Status ── */}
         <Text style={[styles.secTitle, { marginBottom: 8, marginTop: 4 }]}>Lecture Status</Text>
         <View style={styles.statusRow}>
-          <View style={[styles.statusCard, { backgroundColor: COLORS.greenLight, borderColor: COLORS.greenBorder }]}>
-            <View style={[styles.statusDot, { backgroundColor: COLORS.green }]} />
-            <View>
-              <Text style={[styles.statusText, { color: '#065F46' }]}>Ongoing</Text>
-              <Text style={styles.statusSub}>
-                {ongoingLecture ? `${ongoingLecture.sub} · ${ongoingLecture.class}` : 'No lecture now'}
-              </Text>
-            </View>
-          </View>
-          <View style={[styles.statusCard, { backgroundColor: COLORS.primaryLight, borderColor: COLORS.border }]}>
-            <View style={[styles.statusDot, { backgroundColor: COLORS.amber }]} />
-            <View>
-              <Text style={styles.statusText}>Upcoming</Text>
-              <Text style={styles.statusSub}>
-                {nextLecture ? `${nextLecture.sub} · ${nextLecture.time}` : 'No next lecture'}
-              </Text>
-            </View>
-          </View>
+          {loading ? (
+            <>
+              <View style={[styles.statusCard, { backgroundColor: COLORS.greenLight }]}>
+                <Skeleton width="80%" height={14} style={{ marginBottom: 4 }} />
+                <Skeleton width="60%" height={12} />
+              </View>
+              <View style={[styles.statusCard, { backgroundColor: COLORS.primaryLight }]}>
+                <Skeleton width="80%" height={14} style={{ marginBottom: 4 }} />
+                <Skeleton width="60%" height={12} />
+              </View>
+            </>
+          ) : (
+            <>
+              <View style={[styles.statusCard, { backgroundColor: COLORS.greenLight, borderColor: COLORS.greenBorder }]}>
+                <View style={[styles.statusDot, { backgroundColor: COLORS.green }]} />
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.statusText, { color: '#065F46' }]}>Ongoing</Text>
+                  <Text style={styles.statusSub}>
+                    {ongoingLecture ? `${ongoingLecture.sub} · ${ongoingLecture.class}` : 'No lecture now'}
+                  </Text>
+                </View>
+              </View>
+              <View style={[styles.statusCard, { backgroundColor: COLORS.primaryLight, borderColor: COLORS.border }]}>
+                <View style={[styles.statusDot, { backgroundColor: COLORS.amber }]} />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.statusText}>Upcoming</Text>
+                  <Text style={styles.statusSub}>
+                    {nextLecture ? `${nextLecture.sub} · ${nextLecture.time}` : 'No next lecture'}
+                  </Text>
+                </View>
+              </View>
+            </>
+          )}
         </View>
 
         {/* ── Today's Company ── */}
-        {todayCompany && (
+        {loading ? (
+          <>
+            <Text style={[styles.secTitle, { marginBottom: 8, marginTop: 4 }]}>Today's Company</Text>
+            <View style={styles.companyCard}>
+              <View style={styles.companyHeader}>
+                <View style={{ flex: 1, marginRight: 10 }}>
+                  <Skeleton width={150} height={20} style={{ marginBottom: 6 }} baseColor="rgba(255,255,255,0.2)" highlightColor="rgba(255,255,255,0.4)" />
+                  <Skeleton width={100} height={14} style={{ marginBottom: 4 }} baseColor="rgba(255,255,255,0.2)" highlightColor="rgba(255,255,255,0.4)" />
+                  <Skeleton width={120} height={14} baseColor="rgba(255,255,255,0.2)" highlightColor="rgba(255,255,255,0.4)" />
+                </View>
+                <Skeleton width={46} height={46} borderRadius={10} baseColor="rgba(255,255,255,0.2)" highlightColor="rgba(255,255,255,0.4)" />
+              </View>
+              <Skeleton width="80%" height={14} style={{ marginTop: 8 }} baseColor="rgba(255,255,255,0.2)" highlightColor="rgba(255,255,255,0.4)" />
+            </View>
+          </>
+        ) : todayCompany && (
           <>
             <Text style={[styles.secTitle, { marginBottom: 8, marginTop: 4 }]}>Today's Company</Text>
             <View style={styles.companyCard}>
@@ -244,7 +330,14 @@ export default function FacultyHomeTab({ navigation }) {
 
         {/* ── Notices ── */}
         <SectionRow title="Notices" onViewAll={() => navigation.navigate('Notice')} />
-        {notices.length > 0 ? (
+        {loading ? (
+          [1, 2].map(key => (
+            <View key={key} style={styles.noticeCard}>
+              <View style={styles.noticeDot} />
+              <Skeleton width="60%" height={16} />
+            </View>
+          ))
+        ) : notices.length > 0 ? (
           notices.map(item => (
             <View key={item.id} style={styles.noticeCard}>
               <View style={[styles.noticeDot, item.category === 'Holiday' && { backgroundColor: COLORS.amber }]} />
@@ -256,19 +349,30 @@ export default function FacultyHomeTab({ navigation }) {
           <Text style={styles.emptyText}>No recent notices.</Text>
         )}
 
-        {/* ── Upcoming Events — no Register button for faculty ── */}
+        {/* ── Upcoming Events ── */}
         <SectionRow title="Upcoming Events" onViewAll={() => navigation.navigate('Events')} />
         <View style={styles.eventsGrid}>
-          {upcomingEvents.length > 0 ? (
+          {loading ? (
+            [1, 2].map(key => (
+              <View key={key} style={styles.eventCardCtn}>
+                <View style={styles.eventNameBox}>
+                  <Skeleton width="80%" height={16} />
+                </View>
+                <Skeleton width="50%" height={12} style={{ marginTop: 4, marginLeft: 2 }} />
+              </View>
+            ))
+          ) : upcomingEvents.length > 0 ? (
             upcomingEvents.map(item => (
               <TouchableOpacity
                 key={item.id}
-                style={styles.eventCard}
+                style={styles.eventCardCtn}
                 onPress={() => navigation.navigate('UpcomingEventScreen', { event: item })}
                 activeOpacity={0.8}
               >
-                <Text style={styles.eventName}>{item.name}</Text>
-                <Text style={styles.eventDesc}>{item.date}</Text>
+                <View style={styles.eventNameBox}>
+                  <Text style={styles.eventNameText} numberOfLines={1}>{item.name}</Text>
+                </View>
+                <Text style={styles.eventDesc} numberOfLines={1}>{item.date}</Text>
               </TouchableOpacity>
             ))
           ) : (
@@ -328,13 +432,16 @@ const styles = StyleSheet.create({
 
   classCard: {
     backgroundColor: COLORS.card,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    padding: 10,
+    borderRadius: 16,
+    padding: 14,
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1.5 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
   },
   timeCol: { width: 56, alignItems: 'center', flexShrink: 0 },
   timeVal: { fontSize: 11, fontWeight: '700', color: COLORS.primary, lineHeight: 15, textAlign: 'center' },
@@ -344,25 +451,32 @@ const styles = StyleSheet.create({
   subject: { fontSize: 13, fontWeight: '700', color: COLORS.textPrimary },
   teacher: { fontSize: 11, color: COLORS.textSecondary, marginTop: 2 },
 
-  statusRow: { flexDirection: 'row', marginBottom: 12 },
+  statusRow: { gap: 12, marginBottom: 16 },
   statusCard: {
-    flex: 1,
-    borderRadius: 12,
-    borderWidth: 1,
-    padding: 10,
+    borderRadius: 16,
+    padding: 16,
     flexDirection: 'row',
     alignItems: 'center',
-    marginRight: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 3,
+    elevation: 2,
   },
-  statusDot: { width: 8, height: 8, borderRadius: 4, marginRight: 8, flexShrink: 0 },
-  statusText: { fontSize: 12, fontWeight: '600', color: COLORS.textPrimary },
-  statusSub: { fontSize: 10, color: COLORS.textSecondary, marginTop: 1 },
+  statusDot: { width: 10, height: 10, borderRadius: 5, marginRight: 12, flexShrink: 0 },
+  statusText: { fontSize: 14, fontWeight: '700', color: COLORS.textPrimary },
+  statusSub: { fontSize: 13, color: COLORS.textSecondary, marginTop: 4 },
 
   companyCard: {
     backgroundColor: COLORS.primary,
-    borderRadius: 14,
-    padding: 14,
-    marginBottom: 12,
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 16,
+    shadowColor: COLORS.primary,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.2,
+    shadowRadius: 6,
+    elevation: 4,
   },
   companyHeader: { flexDirection: 'row', alignItems: 'flex-start' },
   companyName: { fontSize: 16, fontWeight: '800', color: COLORS.white },
@@ -381,31 +495,39 @@ const styles = StyleSheet.create({
 
   noticeCard: {
     backgroundColor: COLORS.card,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    padding: 10,
+    borderRadius: 12,
+    padding: 12,
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 6,
+    marginBottom: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 3,
+    elevation: 1,
   },
   noticeDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: COLORS.primary, marginRight: 8, flexShrink: 0 },
   noticeText: { flex: 1, fontSize: 13, fontWeight: '600', color: COLORS.textPrimary },
   noticeTime: { fontSize: 10, color: COLORS.textMuted, marginLeft: 8 },
 
-  eventsGrid: { flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4 },
-  eventCard: {
+  eventsGrid: { flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -6 },
+  eventCardCtn: {
     width: '50%',
-    paddingHorizontal: 4,
-    marginBottom: 8,
-    backgroundColor: COLORS.card,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    padding: 10,
+    paddingHorizontal: 6,
+    marginBottom: 12,
   },
-  eventName: { fontSize: 13, fontWeight: '700', color: COLORS.textPrimary },
-  eventDesc: { fontSize: 11, color: COLORS.textSecondary, marginTop: 2, lineHeight: 15 },
+  eventNameBox: {
+    backgroundColor: COLORS.card,
+    borderRadius: 14,
+    padding: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1.5 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  eventNameText: { fontSize: 13, fontWeight: '700', color: COLORS.textPrimary },
+  eventDesc: { fontSize: 11, color: COLORS.textSecondary, marginTop: 4, marginLeft: 2, lineHeight: 15 },
 
   emptyText: { fontSize: 13, color: COLORS.textMuted, fontStyle: 'italic', marginBottom: 8 },
 });

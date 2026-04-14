@@ -19,3 +19,21 @@ export async function loadFromCache(key) {
     return null;
   }
 }
+
+export async function clearCache(key) {
+  try {
+    await AsyncStorage.removeItem(key);
+    return true;
+  } catch (error) {
+    return false;
+  }
+}
+
+export async function clearAllCache() {
+  try {
+    await AsyncStorage.clear();
+    return true;
+  } catch (error) {
+    return false;
+  }
+}

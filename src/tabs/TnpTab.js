@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -7,9 +7,11 @@ import {
   TouchableOpacity,
   StyleSheet,
   StatusBar,
+  Image,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Path, Circle } from 'react-native-svg';
+import Skeleton from '../components/Skeleton';
 
 // ── Monochromatic SVG Icons ───────────────────────────────────────────────────
 const BellIcon = ({ size = 18, color = '#3D6EE8' }) => (
@@ -45,14 +47,14 @@ const SearchIcon = ({ size = 15, color = '#BBBBBB' }) => (
 
 // ── Color tokens ──────────────────────────────────────────────────────────────
 const COLORS = {
-  primary:       '#3D6EE8',
-  primaryLight:  '#EEF3FD',
-  background:    '#F5F6FA',
+  primary:       '#007AFF',
+  primaryLight:  '#E5F1FF',
+  background:    '#F2F2F7',
   card:          '#FFFFFF',
-  border:        '#E0E7F5',
-  textPrimary:   '#111111',
-  textSecondary: '#888888',
-  textMuted:     '#BBBBBB',
+  border:        '#E5E5EA',
+  textPrimary:   '#000000',
+  textSecondary: '#3C3C43',
+  textMuted:     '#8E8E93',
   white:         '#FFFFFF',
 };
 
@@ -83,7 +85,14 @@ const visitedCompanies = [
 // ── Component ─────────────────────────────────────────────────────────────────
 export default function TnpTab({ navigation }) {
   const [search, setSearch] = useState('');
+  const [loading, setLoading] = useState(true);
   const insets = useSafeAreaInsets();
+
+  useEffect(() => {
+    // Simulate data loading
+    const timer = setTimeout(() => setLoading(false), 1500);
+    return () => clearTimeout(timer);
+  }, []);
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
@@ -99,9 +108,10 @@ export default function TnpTab({ navigation }) {
           <Text style={styles.topbarTitle}>T&P Hub</Text>
           {/* <Text style={styles.topbarSub}>PICT Campus Connect</Text> */}
         </View>
-        <TouchableOpacity style={styles.bellBtn}>
-          <BellIcon size={16} color={COLORS.primary} />
-        </TouchableOpacity>
+        <Image
+          source={require('../../assets/pict logo.png')}
+          style={{ width: 40, height: 40, resizeMode: 'contain' }}
+        />
       </View>
 
       {/* ── Search ── */}
@@ -125,67 +135,105 @@ export default function TnpTab({ navigation }) {
       >
         {/* ── Today's Company ── */}
         <Text style={styles.sectionTitle}>Today's Company</Text>
-        <View style={styles.todayCard}>
-          <View style={styles.todayTop}>
-            <View style={styles.todayInfo}>
-              <Text style={styles.coName}>{todayCompany.name}</Text>
-              <Text style={styles.coSub}>{todayCompany.service}</Text>
+        {loading ? (
+          <View style={styles.todayCard}>
+            <View style={styles.todayTop}>
+              <View style={styles.todayInfo}>
+                <Skeleton width={150} height={22} style={{ marginBottom: 6 }} />
+                <Skeleton width={100} height={16} />
+              </View>
+              <Skeleton width={68} height={68} borderRadius={12} />
             </View>
-            <View style={styles.photoBox}>
-              <Text style={styles.photoText}>Photo</Text>
+            <View style={styles.pillRow}>
+              <Skeleton width={120} height={36} borderRadius={10} />
+              <Skeleton width={100} height={36} borderRadius={10} />
+            </View>
+            <View style={styles.metaList}>
+              <Skeleton width="90%" height={16} />
+              <Skeleton width="80%" height={16} />
+              <Skeleton width="70%" height={16} />
             </View>
           </View>
-
-          <View style={styles.pillRow}>
-            <View style={styles.pillBlue}>
-              <Text style={styles.pillBlueText}>Package (CTC)</Text>
-              <Text style={styles.pillBlueText}>{todayCompany.package}</Text>
+        ) : (
+          <View style={styles.todayCard}>
+            <View style={styles.todayTop}>
+              <View style={styles.todayInfo}>
+                <Text style={styles.coName}>{todayCompany.name}</Text>
+                <Text style={styles.coSub}>{todayCompany.service}</Text>
+              </View>
+              <View style={styles.photoBox}>
+                <Text style={styles.photoText}>Photo</Text>
+              </View>
             </View>
-            <View style={styles.pillOutline}>
-              <Text style={styles.pillOutlineText}>{todayCompany.eligibility}</Text>
+
+            <View style={styles.pillRow}>
+              <View style={styles.pillBlue}>
+                <Text style={styles.pillBlueText}>Package (CTC)</Text>
+                <Text style={styles.pillBlueText}>{todayCompany.package}</Text>
+              </View>
+              <View style={styles.pillOutline}>
+                <Text style={styles.pillOutlineText}>{todayCompany.eligibility}</Text>
+              </View>
             </View>
-          </View>
 
-          <View style={styles.metaList}>
-            <Text style={styles.metaText}>
-              <Text style={styles.metaBold}>Skills: </Text>{todayCompany.skills}
-            </Text>
-            <Text style={styles.metaText}>
-              Reporting Time: <Text style={styles.metaBold}>{todayCompany.reportingTime}</Text>
-            </Text>
-            <Text style={styles.metaText}>
-              Venue: <Text style={styles.metaBold}>{todayCompany.venue}</Text>
-            </Text>
-          </View>
+            <View style={styles.metaList}>
+              <Text style={styles.metaText}>
+                <Text style={styles.metaBold}>Skills: </Text>{todayCompany.skills}
+              </Text>
+              <Text style={styles.metaText}>
+                Reporting Time: <Text style={styles.metaBold}>{todayCompany.reportingTime}</Text>
+              </Text>
+              <Text style={styles.metaText}>
+                Venue: <Text style={styles.metaBold}>{todayCompany.venue}</Text>
+              </Text>
+            </View>
 
-          <TouchableOpacity
-            onPress={() => navigation.navigate('TodayCompanyScreen', { company: todayCompany })}
-          >
-            <Text style={styles.viewLink}>View Details →</Text>
-          </TouchableOpacity>
-        </View>
+            <TouchableOpacity
+              onPress={() => navigation.navigate('TodayCompanyScreen', { company: todayCompany })}
+            >
+              <Text style={styles.viewLink}>View Details →</Text>
+            </TouchableOpacity>
+          </View>
+        )}
 
         {/* ── Upcoming Companies ── */}
         <Text style={[styles.sectionTitle, { marginTop: 20 }]}>Upcoming Company</Text>
-        {upcomingCompanies.map((item) => (
-          <View key={item.id} style={styles.upCard}>
-            <View style={styles.upRow}>
-              <View>
-                <Text style={styles.upName}>{item.name}</Text>
-                <Text style={styles.upSub}>{item.service}</Text>
+        {loading ? (
+          [1, 2].map(key => (
+            <View key={key} style={styles.upCard}>
+               <View style={styles.upRow}>
+                 <View>
+                   <Skeleton width={120} height={20} style={{ marginBottom: 6 }} />
+                   <Skeleton width={80} height={14} />
+                 </View>
+                 <Skeleton width={70} height={20} />
+               </View>
+               <View style={[styles.upBottom, { marginTop: 16 }]}>
+                 <Skeleton width={100} height={14} />
+               </View>
+            </View>
+          ))
+        ) : (
+          upcomingCompanies.map((item) => (
+            <View key={item.id} style={styles.upCard}>
+              <View style={styles.upRow}>
+                <View>
+                  <Text style={styles.upName}>{item.name}</Text>
+                  <Text style={styles.upSub}>{item.service}</Text>
+                </View>
+                <Text style={styles.lpa}>{item.lpa}</Text>
               </View>
-              <Text style={styles.lpa}>{item.lpa}</Text>
+              <View style={styles.upBottom}>
+                <Text style={styles.upDate}>{item.date}</Text>
+                <TouchableOpacity
+                  onPress={() => navigation.navigate('UpcomingCompanyScreen', { company: item })}
+                >
+                  <Text style={styles.upLink}>View Details →</Text>
+                </TouchableOpacity>
+              </View>
             </View>
-            <View style={styles.upBottom}>
-              <Text style={styles.upDate}>{item.date}</Text>
-              <TouchableOpacity
-                onPress={() => navigation.navigate('UpcomingCompanyScreen', { company: item })}
-              >
-                <Text style={styles.upLink}>View Details →</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        ))}
+          ))
+        )}
 
         {/* ── Company Visited ── */}
         <View style={styles.visitedHeader}>
@@ -197,18 +245,28 @@ export default function TnpTab({ navigation }) {
           </TouchableOpacity>
         </View>
         <View style={styles.visitedGrid}>
-          {visitedCompanies.map((item) => (
-            <View key={item.id} style={styles.vCard}>
-              <Text style={styles.vName}>{item.name}</Text>
-              <Text style={styles.vLpa}>{item.lpa}</Text>
-              <Text style={styles.vHired}>{item.totalHired}</Text>
-              <TouchableOpacity
-                onPress={() => navigation.navigate('VisitedCompanyScreen', { company: item })}
-              >
-                <Text style={styles.vLink}>View Details →</Text>
-              </TouchableOpacity>
-            </View>
-          ))}
+          {loading ? (
+            [1, 2].map(key => (
+              <View key={key} style={styles.vCard}>
+                <Skeleton width="80%" height={16} style={{ marginBottom: 4 }} />
+                <Skeleton width="60%" height={16} style={{ marginBottom: 4 }} />
+                <Skeleton width="70%" height={14} />
+              </View>
+            ))
+          ) : (
+            visitedCompanies.map((item) => (
+              <View key={item.id} style={styles.vCard}>
+                <Text style={styles.vName}>{item.name}</Text>
+                <Text style={styles.vLpa}>{item.lpa}</Text>
+                <Text style={styles.vHired}>{item.totalHired}</Text>
+                <TouchableOpacity
+                  onPress={() => navigation.navigate('VisitedCompanyScreen', { company: item })}
+                >
+                  <Text style={styles.vLink}>View Details →</Text>
+                </TouchableOpacity>
+              </View>
+            ))
+          )}
         </View>
 
         <View style={{ height: 20 }} />
@@ -296,9 +354,12 @@ const styles = StyleSheet.create({
   todayCard: {
     backgroundColor: COLORS.card,
     borderRadius: 16,
-    borderWidth: 1,
-    borderColor: COLORS.border,
     padding: 18,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1.5 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
   },
   todayTop: {
     flexDirection: 'row',
@@ -392,10 +453,13 @@ const styles = StyleSheet.create({
   upCard: {
     backgroundColor: COLORS.card,
     borderRadius: 16,
-    borderWidth: 1,
-    borderColor: COLORS.border,
     padding: 16,
-    marginBottom: 10,
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1.5 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
   },
   upRow: {
     flexDirection: 'row',
@@ -447,11 +511,14 @@ const styles = StyleSheet.create({
   vCard: {
     flex: 1,
     backgroundColor: COLORS.card,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: COLORS.border,
+    borderRadius: 16,
     padding: 16,
     gap: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1.5 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
   },
   vName: {
     fontSize: 14,

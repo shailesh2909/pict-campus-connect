@@ -1,34 +1,26 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
-import { onAuthStateChanged } from 'firebase/auth';
-import { auth, db } from './src/api/firebaseConfig';
-import { doc, getDoc } from 'firebase/firestore';
-import { AppNavigator } from './src/navigation/AppNavigator';
-import { View, ActivityIndicator } from 'react-native';
+import { View, ActivityIndicator, AppState } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+
+import { AuthProvider, useAuth } from './src/context/AuthContext';
+import { AppNavigator } from './src/navigation/AppNavigator';
 import { setupNotificationListeners } from './src/services/notificationService';
 import { subscribeToTopics } from './src/services/subscriptionService';
-//import { seedEvents } from './src/api/seedEvents';
+import {
+  dismissExpiredNotifications,
+  startNotificationGuardian,
+  stopNotificationGuardian,
+} from './src/services/NotificationManager';
 
-export default function App() {
-
-  const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true);
+// ── Inner component that consumes AuthContext ──────────
+function AppInner() {
+  const { user, profile, loading } = useAuth();
   const notificationListeners = useRef(null);
 
-  // ── Auth state listener ────────────────────────────
+  // ── Notification setup (runs when user logs in) ──────
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      setUser(user);
-      setLoading(false);
-    });
-
-    return unsubscribe;
-  }, []);
-
-  // ── Notification setup (runs when user logs in) ────
-  useEffect(() => {
-    if (!user) return;
+    if (!user || !profile) return;
 
     let isMounted = true;
 
@@ -44,11 +36,9 @@ export default function App() {
           },
         );
 
-        // 2. Fetch user profile and register push token
-        const userDoc = await getDoc(doc(db, 'users', user.uid));
-        if (userDoc.exists() && isMounted) {
-          const userData = userDoc.data();
-          await subscribeToTopics(userData);
+        // 2. Register push token and subscribe to topics
+        if (isMounted) {
+          await subscribeToTopics(profile);
         }
       } catch (error) {
         console.error('[App] Notification init failed:', error);
@@ -63,22 +53,52 @@ export default function App() {
         notificationListeners.current.remove();
       }
     };
-  }, [user]);
+  }, [user, profile]);
+
+  // ── Notification Guardian ──────────────────────────────
+  // Polls every 10s to show an ongoing (non-swipable) notification
+  // with live countdown, a 5-min popup, and auto-dismiss at lecture start.
+  useEffect(() => {
+    dismissExpiredNotifications();
+    startNotificationGuardian();
+
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'active') {
+        dismissExpiredNotifications();
+        startNotificationGuardian();
+      } else {
+        stopNotificationGuardian();
+      }
+    });
+
+    return () => {
+      subscription.remove();
+      stopNotificationGuardian();
+    };
+  }, []);
 
   if (loading) {
     return (
-      <View style={{ flex: 1, justifyContent: 'center' }}>
-        <ActivityIndicator size="large" color="#0000ff" />
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+        <ActivityIndicator size="large" color="#3D6EE8" />
       </View>
     );
   }
 
   return (
-    <SafeAreaProvider>
-      <NavigationContainer>
-        <AppNavigator user={user} />
-      </NavigationContainer>
-    </SafeAreaProvider>
+    <NavigationContainer>
+      <AppNavigator />
+    </NavigationContainer>
   );
 }
 
+// ── Root App ───────────────────────────────────────────
+export default function App() {
+  return (
+    <SafeAreaProvider>
+      <AuthProvider>
+        <AppInner />
+      </AuthProvider>
+    </SafeAreaProvider>
+  );
+}

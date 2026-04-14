@@ -10,9 +10,10 @@ import {
   Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { auth, db } from '../../api/firebase/firebaseConfig';
-import { doc, getDoc, collection, query, where, getDocs } from 'firebase/firestore';
-import { signOut, sendPasswordResetEmail } from 'firebase/auth';
+import { useAuth } from '../../context/AuthContext';
+import { collection, query, where, getDocs } from 'firebase/firestore';
+import { db, auth } from '../../api/firebase/firebaseConfig';
+import { sendPasswordResetEmail } from 'firebase/auth';
 import Svg, { Path, Circle, Polyline, Rect, Line } from 'react-native-svg';
 
 // ── Colors ────────────────────────────────────────────────────────────────────
@@ -110,33 +111,23 @@ const InfoRow = ({ icon, value, isLast = false }) => (
 
 // ── Component ─────────────────────────────────────────────────────────────────
 export default function FacultyProfileScreen({ navigation }) {
-  const [userData, setUserData]   = useState(null);
-  const [classes, setClasses]     = useState([]);
-  const [loading, setLoading]     = useState(true);
+  const { profile, loading, logout } = useAuth();
+  const [classes, setClasses] = useState([]);
 
   useEffect(() => {
-    const fetchProfile = async () => {
+    const fetchClasses = async () => {
       try {
         const uid = auth.currentUser?.uid;
-        if (!uid) { setLoading(false); return; }
-
-        // 1. Faculty profile
-        const snap = await getDoc(doc(db, 'users', uid));
-        if (snap.exists()) setUserData(snap.data());
-
-        // 2. Classes assigned to this faculty
+        if (!uid) return;
         const classSnap = await getDocs(
           query(collection(db, 'faculty_classes'), where('facultyId', '==', uid))
         );
         setClasses(classSnap.docs.map(d => ({ id: d.id, ...d.data() })));
-
       } catch (e) {
-        console.error('FacultyProfile fetch error:', e);
-      } finally {
-        setLoading(false);
+        console.error('FacultyProfile classes fetch error:', e);
       }
     };
-    fetchProfile();
+    fetchClasses();
   }, []);
 
   const handleChangePassword = async () => {
@@ -173,7 +164,7 @@ export default function FacultyProfileScreen({ navigation }) {
           style: 'destructive',
           onPress: async () => {
             try {
-              await signOut(auth);
+              await logout();
             } catch (e) {
               Alert.alert('Error', e.message);
             }
@@ -191,8 +182,8 @@ export default function FacultyProfileScreen({ navigation }) {
     );
   }
 
-  const initials = userData?.name
-    ? userData.name.split(' ').map(w => w[0]).join('').substring(0, 2).toUpperCase()
+  const initials = profile?.name
+    ? profile.name.split(' ').map(w => w[0]).join('').substring(0, 2).toUpperCase()
     : 'FA';
 
   return (
@@ -219,19 +210,19 @@ export default function FacultyProfileScreen({ navigation }) {
           <View style={styles.avatarRing}>
             <Text style={styles.avatarText}>{initials}</Text>
           </View>
-          <Text style={styles.avatarName}>{userData?.name || 'Faculty'}</Text>
+          <Text style={styles.avatarName}>{profile?.name || 'Faculty'}</Text>
         </View>
 
         <View style={styles.divider} />
 
         {/* ── Personal Info ── */}
         <View style={styles.infoList}>
-          <InfoRow icon={<IdIcon />}    value={userData?.pictId || userData?.facultyId} />
-          <InfoRow icon={<UserIcon />}  value={userData?.name} />
+          <InfoRow icon={<IdIcon />}    value={profile?.pictId || profile?.facultyId} />
+          <InfoRow icon={<UserIcon />}  value={profile?.name} />
           <InfoRow icon={<RoleIcon />}  value="Faculty" />
-          <InfoRow icon={<DeptIcon />}  value={userData?.dept ? `${userData.dept} Engineering` : 'Computer Engineering'} />
-          <InfoRow icon={<MailIcon />}  value={userData?.email} />
-          <InfoRow icon={<PhoneIcon />} value={userData?.contact || userData?.phone} isLast />
+          <InfoRow icon={<DeptIcon />}  value={profile?.dept ? `${profile.dept} Engineering` : 'Computer Engineering'} />
+          <InfoRow icon={<MailIcon />}  value={profile?.email} />
+          <InfoRow icon={<PhoneIcon />} value={profile?.contact || profile?.phone} isLast />
         </View>
 
         <View style={styles.divider} />
