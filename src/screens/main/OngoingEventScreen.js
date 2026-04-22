@@ -87,13 +87,22 @@ const InfoRow = ({ icon, label, value, valueBlue = false }) => (
 
 // ── Component ─────────────────────────────────────────────────────────────────
 export default function OngoingEventScreen({ navigation, route }) {
-  const event = route?.params?.event ?? {
+  const notificationData = route?.params?.notificationData;
+  
+  // If navigated from a notification, use notification data to construct event object
+  const event = notificationData ? {
+    name: notificationData.title || 'Event',
+    date: notificationData.date || 'Date TBA',
+    venue: notificationData.venue || 'Venue TBA',
+    time: notificationData.time || 'Time TBA',
+    description: notificationData.description || 'No description available.',
+  } : (route?.params?.event ?? {
     name: 'Annual Tech Fest 2026',
     date: 'Monday, 24 October 2026',
     time: '10:00 AM – 12:00 PM',
     venue: 'Auditorium, Main Building\nPICT Campus, Pune',
     description: 'Event description goes here. This section describes the purpose, highlights, and any other relevant information about the event for students.',
-  };
+  });
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>

@@ -12,6 +12,7 @@ import VisitedCompanyScreen from '../screens/main/VisitedCompanyScreen';
 import OngoingEventScreen from '../screens/main/OngoingEventScreen';
 import UpcomingEventScreen from '../screens/main/UpcomingEventScreen';
 import NotesScreen from '../screens/main/NotesScreen';
+import NoticeDetailScreen from '../screens/main/NoticeDetailScreen';
 import StudentProfileScreen from '../screens/main/StudentProfileScreen';
 import FacultyProfileScreen from '../screens/main/FacultyProfileScreen';
 
@@ -33,6 +34,7 @@ export function AppNavigator() {
           <Stack.Screen name="OngoingEventScreen" component={OngoingEventScreen} />
           <Stack.Screen name="UpcomingEventScreen" component={UpcomingEventScreen} />
           <Stack.Screen name="NotesScreen" component={NotesScreen} />
+          <Stack.Screen name="NoticeDetailScreen" component={NoticeDetailScreen} />
           <Stack.Screen name="StudentProfileScreen" component={StudentProfileScreen} />
           <Stack.Screen name="FacultyProfileScreen" component={FacultyProfileScreen} />
         </>

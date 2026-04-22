@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -7,10 +7,15 @@ import {
   StyleSheet,
   StatusBar,
   Image,
+  Linking,
+  RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Path } from 'react-native-svg';
+import { collection, onSnapshot } from 'firebase/firestore';
 import Skeleton from '../components/Skeleton';
+import { db } from '../api/firebase/firebaseConfig';
+import { parseFlexibleDate, dayStamp } from '../utils/dateParser';
 
 // ── Colors ────────────────────────────────────────────────────────────────────
 const COLORS = {
@@ -27,42 +32,19 @@ const COLORS = {
   greenLight:    '#E8F8EE',
 };
 
-// ── Mock data (replace with Firebase calls) ───────────────────────────────────
-const ongoingEvents = [
-  {
-    id: '1',
-    name: 'Event Name',
-    date: 'Monday 24, October 2026',
-    time: '10:00 AM – 12:00 PM',
-  },
-  {
-    id: '2',
-    name: 'Event Name',
-    date: 'Monday 24, October 2026',
-    time: '10:00 AM – 12:00 PM',
-  },
-];
+const parseEventDate = (rawDate) => {
+  return parseFlexibleDate(rawDate);
+};
 
-const upcomingEvents = [
-  {
-    id: '1',
-    name: 'Event Name',
-    date: 'Monday 24, October 2026',
-    time: '10:00 AM – 12:00 PM',
-  },
-  {
-    id: '2',
-    name: 'Event Name',
-    date: 'Monday 24, October 2026',
-    time: '10:00 AM – 12:00 PM',
-  },
-  {
-    id: '3',
-    name: 'Event Name',
-    date: 'Monday 24, October 2026',
-    time: '10:00 AM – 12:00 PM',
-  },
-];
+const formatEventDate = (dateObj, fallback) => {
+  if (!dateObj) return fallback || 'Date to be announced';
+  return dateObj.toLocaleDateString('en-IN', {
+    weekday: 'short',
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  });
+};
 
 // ── Bell Icon ─────────────────────────────────────────────────────────────────
 const BellIcon = ({ size = 16, color = '#3D6EE8' }) => (
@@ -124,12 +106,53 @@ const UpcomingCard = ({ item, onViewDetails, onRegister }) => (
 
 // ── Component ─────────────────────────────────────────────────────────────────
 export default function EventTab({ navigation }) {
+  const [ongoingEvents, setOngoingEvents] = useState([]);
+  const [upcomingEvents, setUpcomingEvents] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
-    // Simulate data loading
-    const timer = setTimeout(() => setLoading(false), 1500);
-    return () => clearTimeout(timer);
+    const unsubscribe = onSnapshot(
+      collection(db, 'events'),
+      (snap) => {
+        const today = new Date();
+        const todayKey = dayStamp(today);
+
+        const parsed = snap.docs
+          .map((doc) => {
+            const data = doc.data();
+            const dateObj = parseEventDate(data.date || data.createdAt || data.timestamp);
+            return {
+              id: doc.id,
+              name: data.eventName || data.title || 'Untitled event',
+              date: formatEventDate(dateObj, data.date),
+              time: data.time || 'Time to be announced',
+              venue: data.venue || 'Venue to be announced',
+              description: data.description || 'No description available.',
+              registrationLink: data.registrationLink || data.regLink || '',
+              dateObj,
+            };
+          })
+          .sort((a, b) => {
+            const aTime = a.dateObj ? a.dateObj.getTime() : Number.MAX_SAFE_INTEGER;
+            const bTime = b.dateObj ? b.dateObj.getTime() : Number.MAX_SAFE_INTEGER;
+            return aTime - bTime;
+          });
+
+        const ongoing = parsed.filter((item) => item.dateObj && dayStamp(item.dateObj) === todayKey);
+        const upcoming = parsed.filter((item) => !item.dateObj || dayStamp(item.dateObj) > todayKey);
+
+        setOngoingEvents(ongoing);
+        setUpcomingEvents(upcoming);
+        setLoading(false);
+      },
+      (error) => {
+        console.error('EventTab fetch error:', error);
+        setLoading(false);
+      },
+    );
+
+    return () => unsubscribe();
   }, []);
 
   const handleViewDetails = (item) => {
@@ -141,8 +164,19 @@ export default function EventTab({ navigation }) {
   };
 
   const handleRegister = (item) => {
-    // handle registration logic
+    if (item?.registrationLink) {
+      Linking.openURL(item.registrationLink).catch((err) => {
+        console.warn('Unable to open registration link:', err);
+      });
+    }
   };
+
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    setTimeout(() => {
+      setRefreshing(false);
+    }, 500);
+  }, []);
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
@@ -164,6 +198,14 @@ export default function EventTab({ navigation }) {
         style={styles.scroll}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={COLORS.primary}
+            colors={[COLORS.primary]}
+          />
+        }
       >
         {/* ── Ongoing Events ── */}
         <Text style={styles.sectionTitle}>Ongoing Events</Text>

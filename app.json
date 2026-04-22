@@ -4,11 +4,11 @@
     "slug": "PICT-Campus-Connect",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/pict logo.png",
+    "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "splash": {
-      "image": "./assets/pict logo.png",
+      "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
@@ -27,27 +27,28 @@
         "NOTIFICATIONS"
       ],
       "adaptiveIcon": {
-        "foregroundImage": "./assets/pict logo.png",
+        "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundColor": "#ffffff"
       }
     },
     "web": {
-      "favicon": "./assets/pict logo.png"
+      "favicon": "./assets/favicon.png"
     },
     "plugins": [
       "expo-font",
       [
         "expo-notifications",
         {
-          "icon": "./assets/pict logo.png",
+          "icon": "./assets/icon.png",
           "color": "#ffffff"
         }
       ]
     ],
     "extra": {
       "eas": {
-        "projectId": "0256d69e-1234-4fbc-b4b8-9c306025cf9c"
+        "projectId": "def95a3c-6201-4658-ac0e-7ae9e7842e6c"
       }
-    }
+    },
+    "owner": "campus-connect-pict"
   }
 }

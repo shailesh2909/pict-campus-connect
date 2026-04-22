@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -7,10 +7,15 @@ import {
   StyleSheet,
   StatusBar,
   Image,
+  Linking,
+  RefreshControl,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Path } from 'react-native-svg';
+import { collection, onSnapshot } from 'firebase/firestore';
 import Skeleton from '../components/Skeleton';
+import { db } from '../api/firebase/firebaseConfig';
+import { parseFlexibleDate } from '../utils/dateParser';
 
 // ── Colors ────────────────────────────────────────────────────────────────────
 const COLORS = {
@@ -36,37 +41,24 @@ const TAG_COLORS = {
 // ── Filter categories ─────────────────────────────────────────────────────────
 const FILTERS = ['All', 'Academic', 'Holiday', 'Scholarship'];
 
-// ── Mock data (replace with Firebase calls) ───────────────────────────────────
-const notices = [
-  {
-    id: '1',
-    category: 'All',
-    title: 'Library Time Changes',
-    description: 'The Library changes from 03:30 PM to 05:30 PM',
-    time: '10:30 AM',
-  },
-  {
-    id: '2',
-    category: 'Holiday',
-    title: 'Diwali Holidays',
-    description: 'Diwali holidays starts from 15 October to 22 October',
-    time: '09:00 AM',
-  },
-  {
-    id: '3',
-    category: 'Academic',
-    title: 'Unit Test Timetable',
-    description: 'Checkout the Unit Test Timetable on the college portal',
-    time: '08:15 AM',
-  },
-  {
-    id: '4',
-    category: 'Scholarship',
-    title: 'Desk One Correction',
-    description: 'Application sent back to applicant for correction',
-    time: 'Yesterday',
-  },
-];
+const normalizeCategory = (value) => {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (normalized === 'academic' || normalized === 'academics') return 'Academic';
+  if (normalized === 'holiday' || normalized === 'holidays') return 'Holiday';
+  if (normalized === 'scholarship') return 'Scholarship';
+  return 'All';
+};
+
+const parseNoticeDate = (rawDate) => {
+  return parseFlexibleDate(rawDate) || new Date(0);
+};
+
+const formatNoticeTime = (rawDate) => {
+  if (!rawDate) return 'Recent';
+  const date = parseFlexibleDate(rawDate);
+  if (!date) return String(rawDate);
+  return date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
+};
 
 // ── Bell Icon ─────────────────────────────────────────────────────────────────
 const BellIcon = ({ size = 16, color = '#3D6EE8' }) => (
@@ -89,6 +81,20 @@ const BellIcon = ({ size = 16, color = '#3D6EE8' }) => (
 );
 
 // ── Notice Card ───────────────────────────────────────────────────────────────
+const openAttachment = async (url) => {
+  if (!url) return;
+  try {
+    const canOpen = await Linking.canOpenURL(url);
+    if (canOpen) {
+      await Linking.openURL(url);
+    } else {
+      console.warn('Notice attachment URL is not supported:', url);
+    }
+  } catch (error) {
+    console.warn('Failed to open notice attachment:', error);
+  }
+};
+
 const NoticeCard = ({ item }) => {
   const tag = TAG_COLORS[item.category] || TAG_COLORS['All'];
   return (
@@ -101,6 +107,15 @@ const NoticeCard = ({ item }) => {
       </View>
       <Text style={styles.cardTitle}>{item.title}</Text>
       <Text style={styles.cardDesc}>{item.description}</Text>
+      {item.fileUrl ? (
+        <TouchableOpacity
+          style={styles.attachmentBtn}
+          onPress={() => openAttachment(item.fileUrl)}
+          activeOpacity={0.8}
+        >
+          <Text style={styles.attachmentBtnText}>Open Attachment</Text>
+        </TouchableOpacity>
+      ) : null}
     </View>
   );
 };
@@ -108,18 +123,52 @@ const NoticeCard = ({ item }) => {
 // ── Component ─────────────────────────────────────────────────────────────────
 export default function NoticeTab() {
   const [activeFilter, setActiveFilter] = useState('All');
+  const [notices, setNotices] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const insets = useSafeAreaInsets();
 
   useEffect(() => {
-    // Simulate data loading
-    const timer = setTimeout(() => setLoading(false), 1500);
-    return () => clearTimeout(timer);
+    const unsubscribe = onSnapshot(
+      collection(db, 'notices'),
+      (snap) => {
+        const parsed = snap.docs
+          .map((doc) => {
+            const data = doc.data();
+            return {
+              id: doc.id,
+              category: normalizeCategory(data.category),
+              title: data.headline || data.title || 'Untitled notice',
+              description: data.description || 'No description available.',
+              fileUrl: data.fileUrl || '',
+              time: formatNoticeTime(data.date || data.createdAt || data.timestamp),
+              sortDate: parseNoticeDate(data.date || data.createdAt || data.timestamp),
+            };
+          })
+          .sort((a, b) => b.sortDate.getTime() - a.sortDate.getTime());
+
+        setNotices(parsed);
+        setLoading(false);
+      },
+      (error) => {
+        console.error('NoticeTab fetch error:', error);
+        setLoading(false);
+      },
+    );
+
+    return () => unsubscribe();
   }, []);
 
   const filtered = activeFilter === 'All'
     ? notices
     : notices.filter(n => n.category === activeFilter);
+
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    setTimeout(() => {
+      setRefreshing(false);
+    }, 500);
+  }, []);
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
@@ -164,6 +213,14 @@ export default function NoticeTab() {
         style={styles.scroll}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={COLORS.primary}
+            colors={[COLORS.primary]}
+          />
+        }
       >
         {loading ? (
           // Skeleton Loaders
@@ -319,6 +376,19 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#666666',
     lineHeight: 19,
+  },
+  attachmentBtn: {
+    marginTop: 10,
+    alignSelf: 'flex-start',
+    backgroundColor: COLORS.primaryLight,
+    borderRadius: 8,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+  },
+  attachmentBtnText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: COLORS.primary,
   },
 
   // Empty state

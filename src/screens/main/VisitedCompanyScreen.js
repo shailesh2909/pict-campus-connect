@@ -6,6 +6,7 @@ import {
   TouchableOpacity,
   StyleSheet,
   StatusBar,
+  Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Path, Circle, Polyline, Polygon, Rect } from 'react-native-svg';
@@ -129,9 +130,13 @@ export default function VisitedCompanyScreen({ navigation, route }) {
               <Text style={styles.heroSub}>{company.service}</Text>
             </View>
             <View style={styles.logoBox}>
-              <Text style={styles.logoText}>
-                {company.name?.substring(0, 3).toUpperCase()}
-              </Text>
+              {company.imageUrl ? (
+                <Image source={{ uri: company.imageUrl }} style={styles.logoImage} />
+              ) : (
+                <Text style={styles.logoText}>
+                  {company.name?.substring(0, 3).toUpperCase()}
+                </Text>
+              )}
             </View>
           </View>
           <View style={styles.heroBadge}>
@@ -261,6 +266,11 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: COLORS.primary,
     textAlign: 'center',
+  },
+  logoImage: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 14,
   },
   heroBadge: {
     flexDirection: 'row',

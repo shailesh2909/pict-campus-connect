@@ -9,22 +9,25 @@ import {
   StatusBar,
   ActivityIndicator,
   Image,
+  RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../context/AuthContext';
 import useTimetable from '../hooks/useTimetable';
 import {
   collection,
-  query,
-  where,
-  limit,
-  getDocs,
+  onSnapshot,
 } from 'firebase/firestore';
 import { db } from '../api/firebase/firebaseConfig';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import Svg, { Path, Circle, Rect, Line, Polyline } from 'react-native-svg';
 import { isScheduleStale, syncScheduleWithNotifications } from '../services/NotificationManager';
 import Skeleton from '../components/Skeleton';
+import { parseFlexibleDate, dayStamp } from '../utils/dateParser';
+
+const parseDateSafe = (rawDate) => {
+  return parseFlexibleDate(rawDate);
+};
 
 // ── Colors ────────────────────────────────────────────────────────────────────
 const COLORS = {
@@ -88,32 +91,123 @@ export default function StudentHomeTab({ navigation }) {
   const [notices, setNotices] = useState([]);
   const [upcomingEvents, setUpcomingEvents] = useState([]);
   const [extraLoading, setExtraLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
-    const fetchExtras = async () => {
-      try {
-        // 1. Today's company
-        const companySnap = await getDocs(
-          query(collection(db, 'placement_drives'), where('status', '==', 'today'), limit(1))
-        );
-        if (!companySnap.empty) setTodayCompany(companySnap.docs[0].data());
-
-        // 2. Recent notices
-        const noticeSnap = await getDocs(query(collection(db, 'notices'), limit(2)));
-        setNotices(noticeSnap.docs.map(d => ({ id: d.id, ...d.data() })));
-
-        // 3. Upcoming events
-        const eventsSnap = await getDocs(
-          query(collection(db, 'events'), where('status', '==', 'upcoming'), limit(2))
-        );
-        setUpcomingEvents(eventsSnap.docs.map(d => ({ id: d.id, ...d.data() })));
-      } catch (e) {
-        console.error('StudentHomeTab extras fetch error:', e);
-      } finally {
+    const firstLoad = { companies: false, notices: false, events: false };
+    const markLoaded = (key) => {
+      firstLoad[key] = true;
+      if (firstLoad.companies && firstLoad.notices && firstLoad.events) {
         setExtraLoading(false);
       }
     };
-    fetchExtras();
+
+    const unsubCompanies = onSnapshot(
+      collection(db, 'placement_drives'),
+      (companySnap) => {
+        const todayKey = dayStamp(new Date());
+        const drives = companySnap.docs
+          .map((d) => {
+            const data = d.data();
+            return {
+              id: d.id,
+              companyName: data.company || data.companyName || 'Company',
+              imageUrl: data.imageUrl || '',
+              lpa: data.offer || data.lpa || 'N/A',
+              eligibility: data.eligibility || data.criteria || 'Eligibility TBA',
+              skills: Array.isArray(data.skills) ? data.skills.join(', ') : (data.skills || data.skillsRequired || 'N/A'),
+              reportingTime: data.reportingTime || 'TBA',
+              venue: data.venue || 'TBA',
+              role: data.role || 'Campus Drive',
+              dateObj: parseDateSafe(data.date),
+            };
+          })
+          .sort((a, b) => {
+            const aTime = a.dateObj ? a.dateObj.getTime() : Number.MAX_SAFE_INTEGER;
+            const bTime = b.dateObj ? b.dateObj.getTime() : Number.MAX_SAFE_INTEGER;
+            return aTime - bTime;
+          });
+
+        const todayDrive = drives.find((drive) => drive.dateObj && dayStamp(drive.dateObj) === todayKey);
+        setTodayCompany(todayDrive || drives[0] || null);
+        markLoaded('companies');
+      },
+      (e) => {
+        console.error('StudentHomeTab companies listener error:', e);
+        markLoaded('companies');
+      },
+    );
+
+    const unsubNotices = onSnapshot(
+      collection(db, 'notices'),
+      (noticeSnap) => {
+        const latestNotices = noticeSnap.docs
+          .map((d) => {
+            const data = d.data();
+            const dateObj = parseDateSafe(data.date || data.createdAt || data.timestamp);
+            return {
+              id: d.id,
+              title: data.headline || data.title || 'Notice',
+              category: data.category || 'general',
+              time: dateObj
+                ? dateObj.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
+                : 'Recent',
+              sortDate: dateObj ? dateObj.getTime() : 0,
+            };
+          })
+          .sort((a, b) => b.sortDate - a.sortDate)
+          .slice(0, 2);
+        setNotices(latestNotices);
+        markLoaded('notices');
+      },
+      (e) => {
+        console.error('StudentHomeTab notices listener error:', e);
+        markLoaded('notices');
+      },
+    );
+
+    const unsubEvents = onSnapshot(
+      collection(db, 'events'),
+      (eventsSnap) => {
+        const todayKey = dayStamp(new Date());
+        const events = eventsSnap.docs
+          .map((d) => {
+            const data = d.data();
+            const dateObj = parseDateSafe(data.date);
+            return {
+              id: d.id,
+              name: data.eventName || data.title || 'Event',
+              date: dateObj
+                ? dateObj.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
+                : (data.date || 'Date TBA'),
+              description: data.description || '',
+              venue: data.venue || 'Venue TBA',
+              time: data.time || 'Time TBA',
+              registrationLink: data.registrationLink || data.regLink || '',
+              dateObj,
+            };
+          })
+          .filter((event) => !event.dateObj || dayStamp(event.dateObj) >= todayKey)
+          .sort((a, b) => {
+            const aTime = a.dateObj ? a.dateObj.getTime() : Number.MAX_SAFE_INTEGER;
+            const bTime = b.dateObj ? b.dateObj.getTime() : Number.MAX_SAFE_INTEGER;
+            return aTime - bTime;
+          })
+          .slice(0, 2);
+        setUpcomingEvents(events);
+        markLoaded('events');
+      },
+      (e) => {
+        console.error('StudentHomeTab events listener error:', e);
+        markLoaded('events');
+      },
+    );
+
+    return () => {
+      unsubCompanies();
+      unsubNotices();
+      unsubEvents();
+    };
   }, []);
 
   // ── Re-sync local notifications if timetable changed ──
@@ -142,6 +236,13 @@ export default function StudentHomeTab({ navigation }) {
   const dept = profile?.dept || 'ENTC';
   const year = profile?.year || 'TE';
   const studentId = profile?.email?.split('@')[0] || '';
+
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    setTimeout(() => {
+      setRefreshing(false);
+    }, 500);
+  }, []);
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
@@ -176,6 +277,14 @@ export default function StudentHomeTab({ navigation }) {
         style={styles.scroll}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={COLORS.primary}
+            colors={[COLORS.primary]}
+          />
+        }
       >
         {/* ── Timetable ── */}
         <SectionRow title="Time Table" onViewAll={() => navigation.navigate('TimetableScreen')} />
@@ -280,6 +389,7 @@ export default function StudentHomeTab({ navigation }) {
                 company: {
                   name: todayCompany.companyName,
                   service: todayCompany.role || 'Software Engineer',
+                  imageUrl: todayCompany.imageUrl || '',
                   package: todayCompany.lpa,
                   eligibility: todayCompany.eligibility,
                   reportingTime: todayCompany.reportingTime,
@@ -296,13 +406,17 @@ export default function StudentHomeTab({ navigation }) {
                   <Text style={styles.companyMeta}>Skills: {todayCompany.skills}</Text>
                 </View>
                 <View style={styles.companyPhoto}>
-                  <Text style={styles.companyPhotoText}>
-                    {todayCompany.companyName?.substring(0, 3).toUpperCase()}
-                  </Text>
+                  {todayCompany.imageUrl ? (
+                    <Image source={{ uri: todayCompany.imageUrl }} style={styles.companyPhotoImage} />
+                  ) : (
+                    <Text style={styles.companyPhotoText}>
+                      {todayCompany.companyName?.substring(0, 3).toUpperCase()}
+                    </Text>
+                  )}
                 </View>
               </View>
               <Text style={styles.companyBottom}>
-                {todayCompany.lpa} LPA · {todayCompany.reportingTime} · {todayCompany.venue}
+                {todayCompany.lpa} · {todayCompany.reportingTime} · {todayCompany.venue}
               </Text>
             </TouchableOpacity>
           </>
@@ -320,7 +434,7 @@ export default function StudentHomeTab({ navigation }) {
         ) : notices.length > 0 ? (
           notices.map(item => (
             <View key={item.id} style={styles.noticeCard}>
-              <View style={[styles.noticeDot, item.category === 'Holiday' && { backgroundColor: COLORS.amber }]} />
+              <View style={[styles.noticeDot, String(item.category).toLowerCase() === 'holiday' && { backgroundColor: COLORS.amber }]} />
               <Text style={styles.noticeText} numberOfLines={1}>{item.title}</Text>
               <Text style={styles.noticeTime}>{item.time}</Text>
             </View>
@@ -473,6 +587,11 @@ const styles = StyleSheet.create({
     flexShrink: 0,
   },
   companyPhotoText: { fontSize: 11, fontWeight: '700', color: COLORS.white, textAlign: 'center' },
+  companyPhotoImage: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 10,
+  },
   companyBottom: { fontSize: 11, color: 'rgba(255,255,255,0.8)', marginTop: 8 },
 
   noticeCard: {

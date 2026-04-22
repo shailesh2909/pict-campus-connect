@@ -6,6 +6,7 @@ import {
   TouchableOpacity,
   StyleSheet,
   StatusBar,
+  Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Path, Circle, Polyline, Polygon } from 'react-native-svg';
@@ -83,7 +84,18 @@ const InfoRow = ({ icon, label, value, valueBlue = false }) => (
 
 // ── Component ─────────────────────────────────────────────────────────────────
 export default function TodayCompanyScreen({ navigation, route }) {
-  const company = route?.params?.company ?? {
+  const notificationData = route?.params?.notificationData;
+  
+  // If navigated from a notification, use notification data to construct company object
+  const company = notificationData ? {
+    name: notificationData.companyName || 'Company',
+    service: notificationData.position || 'Position TBA',
+    package: notificationData.offer || 'Package TBA',
+    eligibility: notificationData.eligibility || 'Eligibility criteria TBA',
+    reportingTime: notificationData.reportingTime || 'TBA',
+    venue: notificationData.venue || 'Venue TBA',
+    skillsRequired: notificationData.skills || 'Skills TBA',
+  } : (route?.params?.company ?? {
     name: 'Siemens Healthineers',
     service: 'Software Engineer Intern',
     package: '14.5L',
@@ -91,7 +103,7 @@ export default function TodayCompanyScreen({ navigation, route }) {
     reportingTime: '09:30 AM',
     venue: 'A-Block Seminar Hall',
     skillsRequired: 'Strong knowledge of Java and Data Structures, Good problem solving ability, Basic SQL knowledge, Effective communication skills, Familiarity with OOP concepts',
-  };
+  });
 
   // Split skills by comma into bullet points
   const skills = Array.isArray(company.skillsRequired)
@@ -132,9 +144,13 @@ export default function TodayCompanyScreen({ navigation, route }) {
               <Text style={styles.heroSub}>{company.service}</Text>
             </View>
             <View style={styles.logoBox}>
-              {logoLines.map((line, i) => (
-                <Text key={i} style={styles.logoText}>{line}</Text>
-              ))}
+              {company.imageUrl ? (
+                <Image source={{ uri: company.imageUrl }} style={styles.logoImage} />
+              ) : (
+                logoLines.map((line, i) => (
+                  <Text key={i} style={styles.logoText}>{line}</Text>
+                ))
+              )}
             </View>
           </View>
           <View style={styles.heroBadge}>
@@ -259,6 +275,11 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: COLORS.primary,
     textAlign: 'center',
+  },
+  logoImage: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 14,
   },
   heroBadge: {
     flexDirection: 'row',

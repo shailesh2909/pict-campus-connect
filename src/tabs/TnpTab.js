@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -8,10 +8,20 @@ import {
   StyleSheet,
   StatusBar,
   Image,
+  RefreshControl,
+  Modal,
+  Pressable,
+  Linking,
+  Alert,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Path, Circle } from 'react-native-svg';
+import { collection, onSnapshot } from 'firebase/firestore';
+import * as FileSystem from 'expo-file-system';
+import * as Sharing from 'expo-sharing';
 import Skeleton from '../components/Skeleton';
+import { db } from '../api/firebase/firebaseConfig';
+import { parseFlexibleDate, dayStamp } from '../utils/dateParser';
 
 // ── Monochromatic SVG Icons ───────────────────────────────────────────────────
 const BellIcon = ({ size = 18, color = '#3D6EE8' }) => (
@@ -58,41 +68,208 @@ const COLORS = {
   white:         '#FFFFFF',
 };
 
-// ── Mock data (replace with Firebase calls) ───────────────────────────────────
-const todayCompany = {
-  name: 'Company Name',
-  service: 'Product/Service',
-  package: '14.5 LPA',
-  eligibility: 'Eligibility Criteria...',
-  eligibleDept: 'ENTC, COMP, IT',
-  skills: 'React Native, JavaScript',
-  reportingTime: '09:30 AM',
-  venue: 'Seminar Hall',
-  skillsRequired: '',
+const parseDriveDate = (rawDate) => {
+  return parseFlexibleDate(rawDate);
 };
 
-const upcomingCompanies = [
-  { id: '1', name: 'Company Name', service: 'Product/Service', lpa: '14.5 LPA', date: 'March 18, 2026' },
-  { id: '2', name: 'Company Name', service: 'Product/Service', lpa: '14.5 LPA', date: 'March 18, 2026' },
-  { id: '3', name: 'Company Name', service: 'Product/Service', lpa: '14.5 LPA', date: 'March 18, 2026' },
-];
+const formatDriveDate = (dateObj, fallback) => {
+  if (!dateObj) return fallback || 'Date TBA';
+  return dateObj.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+};
 
-const visitedCompanies = [
-  { id: '1', name: 'Company Name', lpa: '14.5 LPA', totalHired: 'Total Hired' },
-  { id: '2', name: 'Company Name', lpa: '14.5 LPA', totalHired: 'Total Hired' },
-];
+const normalizeSkills = (skills, skillsRequired) => {
+  if (Array.isArray(skills) && skills.length > 0) {
+    return skills.join(', ');
+  }
+  if (Array.isArray(skillsRequired) && skillsRequired.length > 0) {
+    return skillsRequired.join(', ');
+  }
+  return skillsRequired || skills || 'Not specified';
+};
+
+const IMAGE_EXTENSIONS = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'heic', 'heif'];
+
+const getFileExtension = (value = '') => {
+  const clean = String(value).split('?')[0].split('#')[0];
+  const last = clean.split('.').pop();
+  return last ? last.toLowerCase() : '';
+};
+
+const isImageFile = (url = '', fileName = '') => {
+  const extFromName = getFileExtension(fileName);
+  const extFromUrl = getFileExtension(url);
+  return IMAGE_EXTENSIONS.includes(extFromName) || IMAGE_EXTENSIONS.includes(extFromUrl);
+};
+
+const isPdfFile = (url = '', fileName = '') => {
+  const ext = getFileExtension(fileName) || getFileExtension(url);
+  return ext === 'pdf';
+};
+
+const getFileChipText = (url = '', fileName = '') => {
+  const ext = getFileExtension(fileName) || getFileExtension(url);
+  if (!ext) return 'FILE';
+  return ext.toUpperCase();
+};
 
 // ── Component ─────────────────────────────────────────────────────────────────
 export default function TnpTab({ navigation }) {
   const [search, setSearch] = useState('');
+  const [todayCompanies, setTodayCompanies] = useState([]);
+  const [upcomingCompanies, setUpcomingCompanies] = useState([]);
+  const [visitedCompanies, setVisitedCompanies] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [isPreviewVisible, setIsPreviewVisible] = useState(false);
+  const [previewFile, setPreviewFile] = useState({
+    url: '',
+    fileName: '',
+    isImage: false,
+  });
+  const [isDownloading, setIsDownloading] = useState(false);
   const insets = useSafeAreaInsets();
 
   useEffect(() => {
-    // Simulate data loading
-    const timer = setTimeout(() => setLoading(false), 1500);
-    return () => clearTimeout(timer);
+    const unsubscribe = onSnapshot(
+      collection(db, 'placement_drives'),
+      (snap) => {
+        const today = new Date();
+        const todayKey = dayStamp(today);
+
+        const drives = snap.docs
+          .map((doc) => {
+            const data = doc.data();
+            const dateObj = parseDriveDate(data.date || data.createdAt || data.timestamp);
+            const offer = data.offer || data.lpa || 'N/A';
+            const normalizedOffer = typeof offer === 'string' && offer.toLowerCase().includes('lpa') ? offer : `${offer} LPA`;
+            return {
+              id: doc.id,
+              name: data.company || data.companyName || 'Unnamed company',
+              service: data.role || 'Campus Drive',
+              imageUrl: data.imageUrl || '',
+              imageName: data.imageName || '',
+              package: normalizedOffer,
+              lpa: normalizedOffer,
+              eligibility: data.eligibility || data.criteria || 'Eligibility will be updated soon',
+              skills: normalizeSkills(data.skills, data.skillsRequired),
+              skillsRequired: normalizeSkills(data.skills, data.skillsRequired),
+              reportingTime: data.reportingTime || 'TBA',
+              venue: data.venue || 'TBA',
+              date: formatDriveDate(dateObj, data.date),
+              totalHired: data.totalHired != null ? String(data.totalHired) : 'N/A',
+              registrationLink: data.registrationLink || data.regLink || '',
+              dateObj,
+            };
+          })
+          .sort((a, b) => {
+            const aTime = a.dateObj ? a.dateObj.getTime() : Number.MAX_SAFE_INTEGER;
+            const bTime = b.dateObj ? b.dateObj.getTime() : Number.MAX_SAFE_INTEGER;
+            return aTime - bTime;
+          });
+
+        const todayDrives = drives.filter((drive) => drive.dateObj && dayStamp(drive.dateObj) === todayKey);
+        const upcoming = drives.filter((drive) => !drive.dateObj || dayStamp(drive.dateObj) > todayKey);
+        const visited = drives
+          .filter((drive) => drive.dateObj && dayStamp(drive.dateObj) < todayKey)
+          .sort((a, b) => b.dateObj.getTime() - a.dateObj.getTime());
+
+        setTodayCompanies(todayDrives);
+        setUpcomingCompanies(upcoming.slice(0, 10));
+        setVisitedCompanies(visited.slice(0, 2));
+        setLoading(false);
+      },
+      (error) => {
+        console.error('TnpTab fetch error:', error);
+        setLoading(false);
+      },
+    );
+
+    return () => unsubscribe();
   }, []);
+
+  const normalizedSearch = search.trim().toLowerCase();
+
+  const filteredUpcoming = normalizedSearch
+    ? upcomingCompanies.filter((item) => {
+        const haystack = `${item.name} ${item.service} ${item.eligibility} ${item.skills}`.toLowerCase();
+        return haystack.includes(normalizedSearch);
+      })
+    : upcomingCompanies;
+
+  const filteredVisited = normalizedSearch
+    ? visitedCompanies.filter((item) => {
+        const haystack = `${item.name} ${item.service} ${item.eligibility} ${item.skills}`.toLowerCase();
+        return haystack.includes(normalizedSearch);
+      })
+    : visitedCompanies;
+
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    setTimeout(() => {
+      setRefreshing(false);
+    }, 500);
+  }, []);
+
+  const openFilePreview = useCallback((url, fileName = '') => {
+    if (!url) return;
+    setPreviewFile({
+      url,
+      fileName,
+      isImage: isImageFile(url, fileName),
+    });
+    setIsPreviewVisible(true);
+  }, []);
+
+  const closeImagePreview = useCallback(() => {
+    setIsPreviewVisible(false);
+    setPreviewFile({ url: '', fileName: '', isImage: false });
+  }, []);
+
+  const handleDownloadFile = useCallback(async () => {
+    if (!previewFile.url) return;
+    try {
+      setIsDownloading(true);
+      const ext = getFileExtension(previewFile.fileName) || getFileExtension(previewFile.url) || 'file';
+      const baseName = previewFile.fileName || `tnp_file_${Date.now()}.${ext}`;
+      const safeName = baseName.replace(/[^a-zA-Z0-9._-]/g, '_');
+      const localUri = `${FileSystem.documentDirectory}${safeName}`;
+
+      const result = await FileSystem.downloadAsync(previewFile.url, localUri);
+
+      if (await Sharing.isAvailableAsync()) {
+        await Sharing.shareAsync(result.uri);
+      } else {
+        Alert.alert('Downloaded', `Saved to: ${result.uri}`);
+      }
+    } catch (error) {
+      console.warn('Failed to download file:', error);
+      Alert.alert('Download Failed', 'Unable to download this file right now.');
+    } finally {
+      setIsDownloading(false);
+    }
+  }, [previewFile]);
+
+  const handleCompanyFilePress = useCallback(
+    async (company) => {
+      if (!company?.imageUrl) return;
+      openFilePreview(company.imageUrl, company.imageName || '');
+    },
+    [openFilePreview],
+  );
+
+  const handleOpenOutside = useCallback(async () => {
+    if (!previewFile.url) return;
+    try {
+      const canOpen = await Linking.canOpenURL(previewFile.url);
+      if (canOpen) {
+        await Linking.openURL(previewFile.url);
+      } else {
+        Alert.alert('Cannot Open File', 'This file cannot be opened on this device.');
+      }
+    } catch (error) {
+      Alert.alert('Open Failed', 'Unable to open this file right now.');
+    }
+  }, [previewFile.url]);
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
@@ -132,6 +309,14 @@ export default function TnpTab({ navigation }) {
         style={styles.scroll}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={COLORS.primary}
+            colors={[COLORS.primary]}
+          />
+        }
       >
         {/* ── Today's Company ── */}
         <Text style={styles.sectionTitle}>Today's Company</Text>
@@ -154,46 +339,69 @@ export default function TnpTab({ navigation }) {
               <Skeleton width="70%" height={16} />
             </View>
           </View>
+        ) : todayCompanies.length > 0 ? (
+          todayCompanies.map((company) => (
+            <View key={company.id} style={styles.todayCard}>
+              <View style={styles.todayTop}>
+                <View style={styles.todayInfo}>
+                  <Text style={styles.coName}>{company.name}</Text>
+                  <Text style={styles.coSub}>{company.service}</Text>
+                </View>
+                <View style={styles.photoBox}>
+                  {company.imageUrl ? (
+                    <TouchableOpacity
+                      style={styles.photoTouch}
+                      onPress={() => handleCompanyFilePress(company)}
+                      activeOpacity={0.9}
+                    >
+                      {isImageFile(company.imageUrl, company.imageName) ? (
+                        <Image
+                          source={{ uri: company.imageUrl }}
+                          style={styles.photoImage}
+                        />
+                      ) : (
+                        <View style={styles.fileChipWrap}>
+                          <Text style={styles.fileChipText}>{getFileChipText(company.imageUrl, company.imageName)}</Text>
+                        </View>
+                      )}
+                    </TouchableOpacity>
+                  ) : (
+                    <Text style={styles.photoText}>Photo</Text>
+                  )}
+                </View>
+              </View>
+
+              <View style={styles.pillRow}>
+                <View style={styles.pillBlue}>
+                  <Text style={styles.pillBlueText}>Package (CTC)</Text>
+                  <Text style={styles.pillBlueText}>{company.package}</Text>
+                </View>
+                <View style={styles.pillOutline}>
+                  <Text style={styles.pillOutlineText}>{company.eligibility}</Text>
+                </View>
+              </View>
+
+              <View style={styles.metaList}>
+                <Text style={styles.metaText}>
+                  <Text style={styles.metaBold}>Skills: </Text>{company.skills}
+                </Text>
+                <Text style={styles.metaText}>
+                  Reporting Time: <Text style={styles.metaBold}>{company.reportingTime}</Text>
+                </Text>
+                <Text style={styles.metaText}>
+                  Venue: <Text style={styles.metaBold}>{company.venue}</Text>
+                </Text>
+              </View>
+
+              <TouchableOpacity
+                onPress={() => navigation.navigate('TodayCompanyScreen', { company })}
+              >
+                <Text style={styles.viewLink}>View Details →</Text>
+              </TouchableOpacity>
+            </View>
+          ))
         ) : (
-          <View style={styles.todayCard}>
-            <View style={styles.todayTop}>
-              <View style={styles.todayInfo}>
-                <Text style={styles.coName}>{todayCompany.name}</Text>
-                <Text style={styles.coSub}>{todayCompany.service}</Text>
-              </View>
-              <View style={styles.photoBox}>
-                <Text style={styles.photoText}>Photo</Text>
-              </View>
-            </View>
-
-            <View style={styles.pillRow}>
-              <View style={styles.pillBlue}>
-                <Text style={styles.pillBlueText}>Package (CTC)</Text>
-                <Text style={styles.pillBlueText}>{todayCompany.package}</Text>
-              </View>
-              <View style={styles.pillOutline}>
-                <Text style={styles.pillOutlineText}>{todayCompany.eligibility}</Text>
-              </View>
-            </View>
-
-            <View style={styles.metaList}>
-              <Text style={styles.metaText}>
-                <Text style={styles.metaBold}>Skills: </Text>{todayCompany.skills}
-              </Text>
-              <Text style={styles.metaText}>
-                Reporting Time: <Text style={styles.metaBold}>{todayCompany.reportingTime}</Text>
-              </Text>
-              <Text style={styles.metaText}>
-                Venue: <Text style={styles.metaBold}>{todayCompany.venue}</Text>
-              </Text>
-            </View>
-
-            <TouchableOpacity
-              onPress={() => navigation.navigate('TodayCompanyScreen', { company: todayCompany })}
-            >
-              <Text style={styles.viewLink}>View Details →</Text>
-            </TouchableOpacity>
-          </View>
+          <Text style={styles.emptyText}>No companies scheduled for today.</Text>
         )}
 
         {/* ── Upcoming Companies ── */}
@@ -213,13 +421,29 @@ export default function TnpTab({ navigation }) {
                </View>
             </View>
           ))
-        ) : (
-          upcomingCompanies.map((item) => (
+        ) : filteredUpcoming.length > 0 ? (
+          filteredUpcoming.map((item) => (
             <View key={item.id} style={styles.upCard}>
               <View style={styles.upRow}>
-                <View>
+                <View style={styles.upLeft}>
+                  {item.imageUrl ? (
+                    <TouchableOpacity
+                      onPress={() => handleCompanyFilePress(item)}
+                      activeOpacity={0.9}
+                    >
+                      {isImageFile(item.imageUrl, item.imageName) ? (
+                        <Image source={{ uri: item.imageUrl }} style={styles.upThumb} />
+                      ) : (
+                        <View style={styles.upFileThumb}>
+                          <Text style={styles.upFileText}>{getFileChipText(item.imageUrl, item.imageName)}</Text>
+                        </View>
+                      )}
+                    </TouchableOpacity>
+                  ) : null}
+                  <View style={styles.upTextWrap}>
                   <Text style={styles.upName}>{item.name}</Text>
                   <Text style={styles.upSub}>{item.service}</Text>
+                  </View>
                 </View>
                 <Text style={styles.lpa}>{item.lpa}</Text>
               </View>
@@ -233,6 +457,8 @@ export default function TnpTab({ navigation }) {
               </View>
             </View>
           ))
+        ) : (
+          <Text style={styles.emptyText}>No upcoming drives found.</Text>
         )}
 
         {/* ── Company Visited ── */}
@@ -253,12 +479,12 @@ export default function TnpTab({ navigation }) {
                 <Skeleton width="70%" height={14} />
               </View>
             ))
-          ) : (
-            visitedCompanies.map((item) => (
+          ) : filteredVisited.length > 0 ? (
+            filteredVisited.map((item) => (
               <View key={item.id} style={styles.vCard}>
                 <Text style={styles.vName}>{item.name}</Text>
                 <Text style={styles.vLpa}>{item.lpa}</Text>
-                <Text style={styles.vHired}>{item.totalHired}</Text>
+                <Text style={styles.vHired}>Total Hired: {item.totalHired}</Text>
                 <TouchableOpacity
                   onPress={() => navigation.navigate('VisitedCompanyScreen', { company: item })}
                 >
@@ -266,11 +492,51 @@ export default function TnpTab({ navigation }) {
                 </TouchableOpacity>
               </View>
             ))
+          ) : (
+            <Text style={styles.emptyText}>No visited drives found.</Text>
           )}
         </View>
 
         <View style={{ height: 20 }} />
       </ScrollView>
+
+      <Modal
+        visible={isPreviewVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={closeImagePreview}
+      >
+        <Pressable style={styles.previewBackdrop} onPress={closeImagePreview}>
+          <Pressable style={styles.previewContent} onPress={() => {}}>
+            <TouchableOpacity style={styles.previewCloseBtn} onPress={closeImagePreview} activeOpacity={0.8}>
+              <Text style={styles.previewCloseText}>Close</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.previewDownloadBtn}
+              onPress={handleDownloadFile}
+              activeOpacity={0.8}
+              disabled={isDownloading}
+            >
+              <Text style={styles.previewDownloadText}>{isDownloading ? 'Downloading...' : 'Download'}</Text>
+            </TouchableOpacity>
+
+            {previewFile.url ? (
+              previewFile.isImage ? (
+                <Image source={{ uri: previewFile.url }} style={styles.previewImage} resizeMode="contain" />
+              ) : (
+                <View style={styles.previewFallbackWrap}>
+                  <Text style={styles.previewFallbackTitle}>{previewFile.fileName || 'File preview'}</Text>
+                  <Text style={styles.previewFallbackText}>This file type is not previewed inside the app yet.</Text>
+                  <Text style={styles.previewFallbackText}>You can open it outside the app or download it.</Text>
+                  <TouchableOpacity style={styles.previewOpenBtn} onPress={handleOpenOutside} activeOpacity={0.85}>
+                    <Text style={styles.previewOpenBtnText}>Open File</Text>
+                  </TouchableOpacity>
+                </View>
+              )
+            ) : null}
+          </Pressable>
+        </Pressable>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -395,6 +661,28 @@ const styles = StyleSheet.create({
     color: COLORS.primary,
     fontWeight: '600',
   },
+  photoImage: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 12,
+  },
+  photoTouch: {
+    width: '100%',
+    height: '100%',
+  },
+  fileChipWrap: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 12,
+    backgroundColor: '#DBEAFE',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  fileChipText: {
+    fontSize: 11,
+    color: COLORS.primary,
+    fontWeight: '800',
+  },
   pillRow: {
     flexDirection: 'row',
     marginTop: 16,
@@ -465,6 +753,36 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
+    gap: 10,
+  },
+  upLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    marginRight: 6,
+  },
+  upTextWrap: {
+    flex: 1,
+  },
+  upThumb: {
+    width: 38,
+    height: 38,
+    borderRadius: 10,
+    marginRight: 10,
+  },
+  upFileThumb: {
+    width: 38,
+    height: 38,
+    borderRadius: 10,
+    marginRight: 10,
+    backgroundColor: '#DBEAFE',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  upFileText: {
+    fontSize: 9,
+    color: COLORS.primary,
+    fontWeight: '800',
   },
   upName: {
     fontSize: 16,
@@ -546,5 +864,81 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: COLORS.primary,
     fontWeight: '600',
+  },
+  previewBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.92)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+  },
+  previewContent: {
+    width: '100%',
+    height: '86%',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  previewImage: {
+    width: '100%',
+    height: '100%',
+  },
+  previewCloseBtn: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    zIndex: 10,
+    backgroundColor: 'rgba(255,255,255,0.16)',
+    borderRadius: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  previewCloseText: {
+    color: COLORS.white,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  previewDownloadBtn: {
+    position: 'absolute',
+    top: 8,
+    left: 8,
+    zIndex: 10,
+    backgroundColor: 'rgba(255,255,255,0.16)',
+    borderRadius: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  previewDownloadText: {
+    color: COLORS.white,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  previewFallbackWrap: {
+    width: '100%',
+    paddingHorizontal: 18,
+    alignItems: 'center',
+  },
+  previewFallbackTitle: {
+    color: COLORS.white,
+    fontSize: 18,
+    fontWeight: '700',
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  previewFallbackText: {
+    color: 'rgba(255,255,255,0.85)',
+    fontSize: 13,
+    textAlign: 'center',
+    marginBottom: 14,
+  },
+  previewOpenBtn: {
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    borderRadius: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+  },
+  previewOpenBtnText: {
+    color: COLORS.white,
+    fontSize: 13,
+    fontWeight: '700',
   },
 });
